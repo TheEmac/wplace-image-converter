@@ -1,0 +1,1248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wplace Image Converter</title>
+<style>
+  :root {
+    --bg: #f4f3ef;
+    --panel: #ffffff;
+    --panel-2: #f8f7f4;
+    --border: #e2dfd8;
+    --text: #1d1c1a;
+    --muted: #6b675f;
+    --accent: #2f6fde;
+    --accent-ink: #ffffff;
+    --checker-a: #e9e7e1;
+    --checker-b: #f7f6f2;
+    --grid-line: rgba(0, 0, 0, 0.18);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 4px 16px rgba(0, 0, 0, 0.04);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141414;
+      --panel: #1d1d1d;
+      --panel-2: #242424;
+      --border: #333230;
+      --text: #ecebe8;
+      --muted: #a09d96;
+      --accent: #6b9bff;
+      --accent-ink: #0d1424;
+      --checker-a: #262626;
+      --checker-b: #303030;
+      --grid-line: rgba(255, 255, 255, 0.16);
+      --shadow: none;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141414;
+    --panel: #1d1d1d;
+    --panel-2: #242424;
+    --border: #333230;
+    --text: #ecebe8;
+    --muted: #a09d96;
+    --accent: #6b9bff;
+    --accent-ink: #0d1424;
+    --checker-a: #262626;
+    --checker-b: #303030;
+    --grid-line: rgba(255, 255, 255, 0.16);
+    --shadow: none;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+    padding: 18px 16px 6px; max-width: 1400px; margin: 0 auto;
+  }
+  header h1 { font-size: 20px; margin: 0; letter-spacing: -0.01em; }
+  header p { margin: 0; color: var(--muted); font-size: 13px; }
+
+  .layout {
+    display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 16px;
+    padding: 12px 16px 32px; max-width: 1400px; margin: 0 auto;
+  }
+  @media (max-width: 860px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+
+  .side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px; box-shadow: var(--shadow); min-width: 0;
+  }
+  .card h2 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--muted); margin: 0 0 10px; font-weight: 600;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+
+  .drop {
+    border: 2px dashed var(--border); border-radius: 10px; padding: 18px 12px;
+    text-align: center; cursor: pointer; color: var(--muted); transition: border-color .15s, background .15s;
+  }
+  .drop:hover, .drop.over { border-color: var(--accent); background: var(--panel-2); }
+  .drop strong { color: var(--text); display: block; margin-bottom: 2px; }
+  .drop .file { margin-top: 6px; font-size: 12px; word-break: break-all; }
+
+  .row { display: flex; align-items: center; gap: 8px; margin: 8px 0; flex-wrap: wrap; }
+  .row label { color: var(--muted); }
+  .row .grow { flex: 1; min-width: 0; }
+  input[type="number"], select {
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 7px; padding: 5px 7px; font: inherit; width: 84px;
+  }
+  select { width: auto; }
+  input[type="range"] { width: 100%; accent-color: var(--accent); }
+  input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+  .check { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; color: var(--text) !important; }
+  .hint { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
+  .num { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); flex: none; }
+  .num input[type="number"] { width: 64px; text-align: right; font-variant-numeric: tabular-nums; padding: 3px 6px; }
+  .sub { padding-left: 23px; }
+  .sub[hidden] { display: none; }
+
+  button {
+    font: inherit; border-radius: 7px; border: 1px solid var(--border);
+    background: var(--panel-2); color: var(--text); padding: 6px 11px; cursor: pointer;
+  }
+  button:hover { border-color: var(--muted); }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
+  button.primary:hover { filter: brightness(1.08); }
+  button:disabled { opacity: .5; cursor: default; }
+  .link { background: none; border: none; padding: 0; color: var(--accent); font-size: 12px; text-transform: none; letter-spacing: 0; }
+
+  .group-title { display: flex; justify-content: space-between; align-items: center; margin: 10px 0 6px; font-size: 13px; }
+  .group-title span { font-weight: 600; }
+  .group-title .acts { display: flex; gap: 10px; }
+  .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(26px, 1fr)); gap: 5px; }
+  .sw {
+    aspect-ratio: 1; border-radius: 6px; border: 1px solid rgba(0,0,0,.15); padding: 0;
+    position: relative; cursor: pointer; transition: transform .08s;
+  }
+  .sw:hover { transform: scale(1.08); border-color: rgba(0,0,0,.15); }
+  .sw[aria-pressed="false"] { opacity: .22; }
+  .sw[aria-pressed="false"]::after {
+    content: ""; position: absolute; inset: 45% -2px auto; height: 2px;
+    background: var(--text); transform: rotate(-45deg);
+  }
+
+  .main { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .toolbar .spacer { flex: 1; }
+  .toolbar .zoom { display: flex; align-items: center; gap: 6px; }
+  .toolbar .zoom input[type="range"] { width: 140px; }
+  .stats { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+  .views { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .views.single { grid-template-columns: minmax(0, 1fr); }
+  @media (max-width: 640px) { .views { grid-template-columns: minmax(0, 1fr); } }
+  .view { min-width: 0; }
+  .view h3 { font-size: 12px; color: var(--muted); margin: 0 0 6px; font-weight: 600; }
+  .viewport {
+    position: relative; overflow: hidden; border-radius: 10px; border: 1px solid var(--border);
+    height: min(70vh, 720px); min-height: 260px;
+    background-color: var(--checker-b);
+    background-image:
+      linear-gradient(45deg, var(--checker-a) 25%, transparent 25%, transparent 75%, var(--checker-a) 75%),
+      linear-gradient(45deg, var(--checker-a) 25%, transparent 25%, transparent 75%, var(--checker-a) 75%);
+    background-size: 16px 16px; background-position: 0 0, 8px 8px;
+    cursor: grab; touch-action: none; user-select: none;
+  }
+  .viewport.dragging { cursor: grabbing; }
+  .frame { position: absolute; left: 0; top: 0; line-height: 0; will-change: transform; }
+  .frame canvas { image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
+  .frame.grid::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background-image:
+      linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+    background-size: var(--z) var(--z);
+  }
+  .empty {
+    position: absolute; inset: 0; display: grid; place-items: center;
+    color: var(--muted); text-align: center; padding: 24px; line-height: 1.5; cursor: default;
+  }
+  .empty[hidden] { display: none; }
+
+  .progress { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .progress > div { height: 100%; width: 0; background: var(--accent); transition: width .1s; }
+  .progress.idle > div { opacity: 0; }
+
+  .usage { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; }
+  .usage .item {
+    display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 8px;
+    background: var(--panel-2); font-size: 13px; min-width: 0;
+  }
+  .usage .chip { width: 18px; height: 18px; border-radius: 4px; border: 1px solid rgba(0,0,0,.15); flex: none; }
+  .usage .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .usage .n { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .toast {
+    position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
+    background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 8px;
+    font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  .link-out {
+    width: 100%; margin-top: 4px; background: var(--panel-2); color: var(--muted);
+    border: 1px solid var(--border); border-radius: 7px; padding: 5px 7px; font: 12px ui-monospace, monospace;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Wplace Image Converter</h1>
+  <p>Maps an image to the wplace palette with perceptual color matching, plus optional Bayer or AB lattice dithering.</p>
+</header>
+
+<div class="layout">
+  <aside class="side">
+    <section class="card">
+      <h2>Image</h2>
+      <div class="drop" id="drop" tabindex="0" role="button" aria-label="Upload image">
+        <strong>Upload image</strong>
+        Click, paste, or drag &amp; drop
+        <div class="file" id="fileName"></div>
+      </div>
+      <input type="file" id="file" accept="image/*" hidden>
+    </section>
+
+    <section class="card">
+      <h2>Share</h2>
+      <div class="row">
+        <button id="shareLink" disabled>Copy share link</button>
+        <button id="exportFile" disabled>Export file</button>
+        <button id="importBtn">Import</button>
+      </div>
+      <input type="file" id="importFile" accept=".json,application/json" hidden>
+      <input type="text" id="linkOut" class="link-out" readonly hidden aria-label="Share link">
+      <p class="hint">A link holds the image at its current size plus every setting. An exported file holds the full-size original, so it can still be resized freely. To open one, use Import, drop the file on the page, or paste a share link anywhere here.</p>
+      <p class="hint" id="fileHint" hidden>This page is open from your disk, so a share link won't open by itself on another computer. They can paste it into their copy of this page instead, or you can send an exported file.</p>
+    </section>
+
+    <section class="card">
+      <h2>Size</h2>
+      <div class="row">
+        <label for="scale" style="min-width:44px">Scale</label>
+        <input type="range" id="scale" class="grow" min="1" max="400" value="100">
+        <span class="num"><input type="number" id="scaleNum" min="1" max="1000" step="any" value="100" aria-label="Scale percent">%</span>
+      </div>
+      <div class="row">
+        <label for="width">W</label><input type="number" id="width" min="1" max="4000" value="100">
+        <label for="height">H</label><input type="number" id="height" min="1" max="4000" value="100">
+        <label class="check"><input type="checkbox" id="lock" checked> Lock</label>
+      </div>
+      <p class="hint" id="sizeHint">Resizing is nearest-neighbor, so edges stay crisp.</p>
+    </section>
+
+    <section class="card">
+      <h2>Color</h2>
+      <div class="row">
+        <label for="brightness">Brightness</label>
+        <input type="number" id="brightness" step="0.1" value="0">
+      </div>
+      <p class="hint">Positive values favor lighter palette colors and negative values favor darker ones. 0 is neutral.</p>
+      <div class="row" style="margin-top:12px">
+        <label for="mode">Dithering</label>
+        <select id="mode">
+          <option value="off">Off</option>
+          <option value="bayer">Bayer lattice</option>
+          <option value="ab">AB lattice (checkerboard)</option>
+        </select>
+      </div>
+      <div class="sub" id="abOpts" hidden>
+        <div class="row">
+          <label for="mix" style="min-width:58px">Mixing</label>
+          <input type="range" id="mix" class="grow" min="0" max="100" value="40">
+          <span class="num"><input type="number" id="mixNum" min="0" max="100" step="1" value="40" aria-label="Mixing percent">%</span>
+        </div>
+        <p class="hint">Where a 50/50 checkerboard of two colors matches better than any single color, those two colors alternate. Higher mixing allows more of it, including more contrasting pairs.</p>
+      </div>
+      <div class="sub" id="ditherOpts" hidden>
+        <div class="row">
+          <label for="bayer">Matrix</label>
+          <select id="bayer">
+            <option value="2">2×2</option>
+            <option value="4" selected>4×4</option>
+            <option value="8">8×8</option>
+          </select>
+        </div>
+        <div class="row">
+          <label for="strength" style="min-width:58px">Strength</label>
+          <input type="range" id="strength" class="grow" min="0" max="200" value="100">
+          <span class="num"><input type="number" id="strengthNum" min="0" max="200" step="1" value="100" aria-label="Strength percent">%</span>
+        </div>
+      </div>
+      <details style="margin-top:10px">
+        <summary>Advanced</summary>
+        <div class="row">
+          <label for="alpha">Alpha cutoff</label>
+          <input type="number" id="alpha" min="0" max="256" value="100">
+        </div>
+        <p class="hint">Pixels with alpha below this value become transparent. The default is 100.</p>
+      </details>
+    </section>
+
+    <section class="card">
+      <h2>Palette <button class="link" id="allColors">Select all</button></h2>
+      <div class="group-title"><span>Free</span>
+        <div class="acts"><button class="link" data-group="free" data-on="1">All</button><button class="link" data-group="free" data-on="0">None</button></div>
+      </div>
+      <div class="swatches" id="freeSw"></div>
+      <div class="group-title"><span>Paid 💧</span>
+        <div class="acts"><button class="link" data-group="paid" data-on="1">All</button><button class="link" data-group="paid" data-on="0">None</button></div>
+      </div>
+      <div class="swatches" id="paidSw"></div>
+    </section>
+  </aside>
+
+  <main class="main">
+    <section class="card">
+      <div class="toolbar">
+        <div class="zoom">
+          <label for="zoom" class="stats">Zoom</label>
+          <input type="range" id="zoom" min="0" max="100" value="40">
+          <span class="num"><input type="number" id="zoomNum" min="0.2" max="40" step="0.1" value="1" aria-label="Zoom factor">×</span>
+          <button id="fit">Fit</button>
+        </div>
+        <label class="check"><input type="checkbox" id="grid"> Pixel grid</label>
+        <label class="check"><input type="checkbox" id="showOrig" checked> Original</label>
+        <span class="spacer"></span>
+        <button id="copy" disabled>Copy</button>
+        <button id="download" class="primary" disabled>Download PNG</button>
+      </div>
+      <div class="progress idle" id="progress" style="margin-top:10px"><div></div></div>
+      <p class="stats" id="stats" style="margin:8px 0 0">No image loaded. Drag the preview to pan and Ctrl + scroll to zoom.</p>
+    </section>
+
+    <section class="views" id="views">
+      <div class="view" id="origView">
+        <h3>Original (resized)</h3>
+        <div class="viewport" id="origViewport">
+          <div class="frame" id="origFrame" hidden><canvas id="origCanvas" width="1" height="1"></canvas></div>
+        </div>
+      </div>
+      <div class="view">
+        <h3>Converted</h3>
+        <div class="viewport" id="outViewport">
+          <div class="empty" id="empty">Upload an image to get started.</div>
+          <div class="frame" id="outFrame" hidden><canvas id="outCanvas" width="1" height="1"></canvas></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Colors used <span class="stats" id="usageSummary"></span></h2>
+      <div class="usage" id="usage"><span class="stats">Nothing yet.</span></div>
+    </section>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+
+<!-- Color math and palette tables: OKLab conversion, the distance function and the wplace
+     palette. Runs on the page and inside the worker. -->
+<script id="core">
+function srgbNonlinearTransformInv(c) {
+  return c > 0.04045 ? ((c + 0.055) / 1.055) ** 2.4 : c / 12.92;
+}
+function rgbToOklab(r, g, b) {
+  const lr = srgbNonlinearTransformInv(r / 255);
+  const lg = srgbNonlinearTransformInv(g / 255);
+  const lb = srgbNonlinearTransformInv(b / 255);
+  const lp = Math.cbrt(0.4122214708 * lr + 0.5363325363 * lg + 0.0514459929 * lb);
+  const mp = Math.cbrt(0.2119034982 * lr + 0.6806995451 * lg + 0.1073969566 * lb);
+  const sp = Math.cbrt(0.0883024619 * lr + 0.2817188376 * lg + 0.6299787005 * lb);
+  const l = 0.2104542553 * lp + 0.793617785 * mp - 0.0040720468 * sp;
+  const aa = 1.9779984951 * lp - 2.428592205 * mp + 0.4505937099 * sp;
+  const bb = 0.0259040371 * lp + 0.7827717662 * mp - 0.808675766 * sp;
+  return [l, aa, bb];
+}
+function deltaE2000(lab1, lab2, brightness) {
+  const [L1, a1, b1] = lab1;
+  const [L2, a2, b2] = lab2;
+  const rad2deg = (rad) => rad * 180 / Math.PI;
+  const deg2rad = (deg) => deg * Math.PI / 180;
+  const kL = 1, kC = 1, kH = 1;
+  const C1 = Math.sqrt(a1 ** 2 + b1 ** 2);
+  const C2 = Math.sqrt(a2 ** 2 + b2 ** 2);
+  const avgC = (C1 + C2) / 2;
+  const G = 0.5 * (1 - Math.sqrt(avgC ** 7 / (avgC ** 7 + 25 ** 7)));
+  const a1p = a1 * (1 + G);
+  const a2p = a2 * (1 + G);
+  const C1p = Math.sqrt(a1p ** 2 + b1 ** 2);
+  const C2p = Math.sqrt(a2p ** 2 + b2 ** 2);
+  const h1p = b1 === 0 && a1p === 0 ? 0 : rad2deg(Math.atan2(b1, a1p)) % 360;
+  const h2p = b2 === 0 && a2p === 0 ? 0 : rad2deg(Math.atan2(b2, a2p)) % 360;
+  const Lp = L2 - L1;
+  const Cp = C2p - C1p;
+  let hp = 0;
+  if (C1p * C2p !== 0) {
+    hp = h2p - h1p;
+    if (hp > 180) {
+      hp -= 360;
+    } else if (hp < -180) {
+      hp += 360;
+    }
+  }
+  const Hp = 2 * Math.sqrt(C1p * C2p) * Math.sin(deg2rad(hp) / 2);
+  const avgLp = (L1 + L2) / 2;
+  const avgCp = (C1p + C2p) / 2;
+  let avghp = (h1p + h2p) / 2;
+  if (Math.abs(h1p - h2p) > 180) {
+    avghp += 180;
+  }
+  const T = 1 - 0.17 * Math.cos(deg2rad(avghp - 30)) + 0.24 * Math.cos(deg2rad(2 * avghp)) + 0.32 * Math.cos(deg2rad(3 * avghp + 6)) - 0.2 * Math.cos(deg2rad(4 * avghp - 63));
+  const SL = 1 + 0.015 * (avgLp - 50) ** 2 / Math.sqrt(20 + (avgLp - 50) ** 2);
+  const SC = 1 + 0.045 * avgCp;
+  const SH = 1 + 0.015 * avgCp * T;
+  const θ = 30 * Math.exp((-((avghp - 275) / 25)) ** 2);
+  const RC = 2 * Math.sqrt(avgCp ** 7 / (avgCp ** 7 + 25 ** 7));
+  const RT = -RC * Math.sin(deg2rad(2 * θ));
+  return Math.sqrt((Lp / (kL * SL)) ** 2 + (Cp / (kC * SC)) ** 2 + (Hp / (kH * SH)) ** 2 + RT * (Cp / (kC * SC)) * (Hp / (kH * SH))) - Lp * brightness;
+}
+var COLORS = [
+  [Number.NaN, Number.NaN, Number.NaN],
+  [0, 0, 0],
+  [0.356, 0, 0],
+  [0.573, 0, 0],
+  [0.864, 0, 0],
+  [1, 0, 0],
+  [0.31, 0.119, 0.037],
+  [0.603, 0.209, 0.107],
+  [0.732, 0.118, 0.137],
+  [0.791, 0.039, 0.16],
+  [0.895, -0.026, 0.168],
+  [0.974, -0.019, 0.077],
+  [0.691, -0.154, 0.075],
+  [0.812, -0.185, 0.096],
+  [0.898, -0.17, 0.149],
+  [0.541, -0.097, 0.005],
+  [0.678, -0.114, -0.018],
+  [0.814, -0.15, 0.011],
+  [0.447, -0.019, -0.134],
+  [0.65, -0.048, -0.137],
+  [0.895, -0.124, -0.027],
+  [0.561, 0.054, -0.229],
+  [0.771, 0, -0.11],
+  [0.431, 0.145, -0.143],
+  [0.557, 0.168, -0.127],
+  [0.796, 0.102, -0.097],
+  [0.551, 0.225, -0.023],
+  [0.62, 0.238, 0],
+  [0.759, 0.127, 0.006],
+  [0.428, 0.036, 0.041],
+  [0.552, 0.03, 0.092],
+  [0.817, 0.055, 0.097],
+  [0.738, 0, 0],
+  [0.46, 0.163, 0.074],
+  [0.735, 0.134, 0.071],
+  [0.642, 0.137, 0.122],
+  [0.794, 0.023, 0.054],
+  [0.62, -0.005, 0.105],
+  [0.747, -0.019, 0.138],
+  [0.864, -0.023, 0.136],
+  [0.489, -0.06, 0.058],
+  [0.609, -0.092, 0.08],
+  [0.76, -0.099, 0.085],
+  [0.54, -0.067, -0.079],
+  [0.941, -0.064, -0.007],
+  [0.803, -0.05, -0.096],
+  [0.438, 0.048, -0.192],
+  [0.421, 0.03, -0.102],
+  [0.593, 0.036, -0.119],
+  [0.781, 0.031, -0.09],
+  [0.757, 0.036, 0.098],
+  [0.676, 0.076, 0.09],
+  [0.868, 0.051, 0.061],
+  [0.524, 0.087, 0.047],
+  [0.684, 0.091, 0.045],
+  [0.835, 0.068, 0.048],
+  [0.519, 0.022, 0.034],
+  [0.629, 0.017, 0.043],
+  [0.342, -0.004, -0.016],
+  [0.564, 0, -0.038],
+  [0.789, 0.003, -0.035],
+  [0.502, -0.006, 0.055],
+  [0.638, -0.005, 0.047],
+  [0.82, -0.007, 0.053]
+];
+var COLORS_RGB = [
+  "NaN",
+  "0,0,0",
+  "60,60,60",
+  "120,120,120",
+  "210,210,210",
+  "255,255,255",
+  "96,0,24",
+  "237,28,36",
+  "255,127,39",
+  "246,170,9",
+  "249,221,59",
+  "255,250,188",
+  "14,185,104",
+  "19,230,123",
+  "135,255,94",
+  "12,129,110",
+  "16,174,166",
+  "19,225,190",
+  "40,80,158",
+  "64,147,228",
+  "96,247,242",
+  "107,80,246",
+  "153,177,251",
+  "120,12,153",
+  "170,56,185",
+  "224,159,249",
+  "203,0,122",
+  "236,31,128",
+  "243,141,169",
+  "104,70,52",
+  "149,104,42",
+  "248,178,119",
+  "170,170,170",
+  "165,14,30",
+  "250,128,114",
+  "228,92,26",
+  "214,181,148",
+  "156,132,49",
+  "197,173,49",
+  "232,212,95",
+  "74,107,58",
+  "90,148,74",
+  "132,197,115",
+  "15,121,159",
+  "187,250,242",
+  "125,199,255",
+  "77,49,184",
+  "74,66,132",
+  "122,113,196",
+  "181,174,241",
+  "219,164,99",
+  "209,128,81",
+  "255,197,165",
+  "155,82,73",
+  "209,128,120",
+  "250,182,164",
+  "123,99,82",
+  "156,132,107",
+  "51,57,65",
+  "109,117,141",
+  "179,185,209",
+  "109,100,63",
+  "148,140,107",
+  "205,197,158"
+];
+var COLOR_NAMES = [
+  "", "Black", "Dark Gray", "Gray", "Light Gray", "White",
+  "Deep Red", "Red", "Orange", "Gold", "Yellow", "Light Yellow",
+  "Dark Green", "Green", "Light Green", "Dark Teal", "Teal", "Light Teal",
+  "Dark Blue", "Blue", "Cyan", "Indigo", "Light Indigo", "Dark Purple",
+  "Purple", "Light Purple", "Dark Pink", "Pink", "Light Pink",
+  "Dark Brown", "Brown", "Beige", "Medium Gray", "Dark Red", "Light Red",
+  "Dark Orange", "Light Tan", "Dark Goldenrod", "Goldenrod", "Light Goldenrod",
+  "Dark Olive", "Olive", "Light Olive", "Dark Cyan",
+  "Light Cyan", "Light Blue", "Dark Indigo", "Dark Slate Blue", "Slate Blue",
+  "Light Slate Blue", "Light Brown", "Dark Beige", "Light Beige", "Dark Peach",
+  "Peach", "Light Peach", "Dark Tan", "Tan", "Dark Slate",
+  "Slate", "Light Slate", "Dark Stone", "Stone", "Light Stone"
+];
+</script>
+
+<script type="text/plain" id="worker-src">
+// Exact-match table: every RGB value that is already a palette color maps straight to its index.
+const COLORS_LOOKUP = new Int8Array(16777216).fill(-1);
+for (let i = 1; i < COLORS_RGB.length; i++) {
+  const p = COLORS_RGB[i].split(",");
+  COLORS_LOOKUP[(+p[0] << 16) | (+p[1] << 8) | +p[2]] = i;
+}
+const RGB = new Uint8Array(64 * 3);
+for (let i = 1; i < 64; i++) {
+  const p = COLORS_RGB[i].split(",");
+  RGB[i * 3] = +p[0]; RGB[i * 3 + 1] = +p[1]; RGB[i * 3 + 2] = +p[2];
+}
+
+// Standard recursive Bayer matrix: M(2n) = [[4M, 4M+2], [4M+3, 4M+1]].
+function bayer(n) {
+  let m = [[0]];
+  while (m.length < n) {
+    const s = m.length;
+    const next = Array.from({ length: s * 2 }, () => new Array(s * 2));
+    for (let y = 0; y < s; y++) {
+      for (let x = 0; x < s; x++) {
+        const v = m[y][x] * 4;
+        next[y][x] = v;
+        next[y][x + s] = v + 2;
+        next[y + s][x] = v + 3;
+        next[y + s][x + s] = v + 1;
+      }
+    }
+    m = next;
+  }
+  return m;
+}
+
+// Average gap between neighboring palette colors in sRGB units. The Bayer offset is scaled
+// by this so that, at 100% strength, a pixel between two colors gets mixed across both.
+const DITHER_SPREAD = 48;
+
+// AB lattice: what a 50/50 checkerboard of palette colors i and j looks like from a distance.
+// Light mixes linearly, so the two colors are averaged in linear sRGB before going to OKLab.
+const PAIR_LAB = new Array(64 * 64);
+function pairLab(i, j) {
+  const k = i * 64 + j;
+  if (!PAIR_LAB[k]) {
+    const lin = (v) => srgbNonlinearTransformInv(v / 255);
+    const enc = (c) => 255 * (c > 0.0031308 ? 1.055 * c ** (1 / 2.4) - 0.055 : 12.92 * c);
+    const mix = (o) => enc((lin(RGB[i * 3 + o]) + lin(RGB[j * 3 + o])) / 2);
+    PAIR_LAB[k] = rgbToOklab(mix(0), mix(1), mix(2));
+  }
+  return PAIR_LAB[k];
+}
+// Only the closest few single colors are tried as pair members. Pairs of far-apart colors
+// never win against a near single color, and this keeps the search at a few dozen checks.
+const AB_CANDIDATES = 8;
+
+onmessage = (e) => {
+  const { id, data, w, h, brightness, enabled, alphaCutoff, mode, bayerSize, strength, mixLimit } = e.data;
+  const on = new Uint8Array(64);
+  const list = [];
+  for (const i of enabled) if (i > 0 && i < 64) { on[i] = 1; list.push(i); }
+
+  const rgba = new Uint8ClampedArray(w * h * 4);
+  const indices = new Uint8Array(w * h);
+  const counts = new Uint32Array(64);
+  const cache = new Map();
+  const matrix = mode === "bayer" ? bayer(bayerSize) : null;
+  const cells = bayerSize * bayerSize;
+  const amp = matrix ? strength * DITHER_SPREAD : 0;
+  const ab = mode === "ab";
+  let misses = 0;
+
+  // Returns the A/B pair for a color, packed as a * 64 + b. a === b means a solid color.
+  function matchPair(r, g, b) {
+    const lab = rgbToOklab(r, g, b);
+    const near = [];
+    for (let k = 0; k < list.length; k++) {
+      const c = list[k];
+      near.push([deltaE2000(lab, COLORS[c], brightness), c]);
+    }
+    near.sort((p, q) => p[0] - q[0]);
+    const top = near.slice(0, AB_CANDIDATES);
+    let bestScore = top[0][0], bestA = top[0][1], bestB = top[0][1];
+    for (let s = 0; s < top.length; s++) {
+      for (let t = s + 1; t < top.length; t++) {
+        const i = Math.min(top[s][1], top[t][1]), j = Math.max(top[s][1], top[t][1]);
+        // The mix limit charges for how different the two colors are, so a pair only wins
+        // when its blend is clearly closer than the best single color.
+        const score = deltaE2000(lab, pairLab(i, j), brightness) + mixLimit * deltaE2000(COLORS[i], COLORS[j], 0);
+        if (score < bestScore) { bestScore = score; bestA = i; bestB = j; }
+      }
+    }
+    return bestA * 64 + bestB;
+  }
+
+  for (let y = 0; y < h; y++) {
+    if (y % 64 === 0) postMessage({ id, progress: y / h });
+    const row = matrix ? matrix[y % bayerSize] : null;
+    for (let x = 0; x < w; x++) {
+      const p = y * w + x;
+      const i4 = p * 4;
+      if (data[i4 + 3] < alphaCutoff || list.length === 0) continue;
+      let r = data[i4], g = data[i4 + 1], b = data[i4 + 2];
+      const exact = COLORS_LOOKUP[(r << 16) | (g << 8) | b];
+      if (ab) {
+        let best = exact;
+        if (best < 0 || !on[best]) {
+          const key = (r << 16) | (g << 8) | b;
+          let pair = cache.get(key);
+          if (pair === undefined) { misses++; pair = matchPair(r, g, b); cache.set(key, pair); }
+          // The A/B order is fixed by palette index, so neighboring areas that share a color
+          // keep it on the same checkerboard cells and the lattice stays continuous.
+          best = (x + y) & 1 ? pair & 63 : pair >> 6;
+        }
+        indices[p] = best;
+        counts[best]++;
+        rgba[i4] = RGB[best * 3];
+        rgba[i4 + 1] = RGB[best * 3 + 1];
+        rgba[i4 + 2] = RGB[best * 3 + 2];
+        rgba[i4 + 3] = 255;
+        continue;
+      }
+      // Pixels that are already an enabled palette color stay solid instead of being dithered.
+      if (amp && !(exact > 0 && on[exact])) {
+        // Ordered dithering: nudge the pixel by a fixed per-cell threshold before matching.
+        // The nudge repeats every bayerSize pixels, which is what gives the regular lattice.
+        const o = ((row[x % bayerSize] + 0.5) / cells - 0.5) * amp;
+        r = Math.min(255, Math.max(0, Math.round(r + o)));
+        g = Math.min(255, Math.max(0, Math.round(g + o)));
+        b = Math.min(255, Math.max(0, Math.round(b + o)));
+      }
+      const key = (r << 16) | (g << 8) | b;
+      let best = COLORS_LOOKUP[key];
+      if (best < 0 || !on[best]) {
+        best = cache.get(key);
+        if (best === undefined) {
+          misses++;
+          const lab = rgbToOklab(r, g, b);
+          let minDelta = Infinity;
+          for (let k = 0; k < list.length; k++) {
+            const delta = deltaE2000(lab, COLORS[list[k]], brightness);
+            if (delta < minDelta) { minDelta = delta; best = list[k]; }
+          }
+          cache.set(key, best);
+        }
+      }
+      indices[p] = best;
+      counts[best]++;
+      rgba[i4] = RGB[best * 3];
+      rgba[i4 + 1] = RGB[best * 3 + 1];
+      rgba[i4 + 2] = RGB[best * 3 + 2];
+      rgba[i4 + 3] = 255;
+    }
+  }
+  postMessage({ id, done: true, w, h, rgba, indices, counts, misses }, [rgba.buffer, indices.buffer, counts.buffer]);
+};
+</script>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const FREE = [], PAID = [];
+  for (let i = 1; i < 64; i++) (i <= 31 ? FREE : PAID).push(i);
+
+  const STORE_KEY = "wplace-converter-v1";
+  const saved = (() => { try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch { return {}; } })();
+  const enabled = new Set(Array.isArray(saved.enabled) ? saved.enabled : [...FREE, ...PAID]);
+
+  const el = {
+    drop: $("drop"), file: $("file"), fileName: $("fileName"),
+    scale: $("scale"), scaleNum: $("scaleNum"), width: $("width"), height: $("height"), lock: $("lock"), sizeHint: $("sizeHint"),
+    brightness: $("brightness"), mode: $("mode"), ditherOpts: $("ditherOpts"), bayer: $("bayer"),
+    strength: $("strength"), strengthNum: $("strengthNum"), alpha: $("alpha"),
+    abOpts: $("abOpts"), mix: $("mix"), mixNum: $("mixNum"),
+    zoom: $("zoom"), zoomNum: $("zoomNum"), fit: $("fit"), grid: $("grid"), showOrig: $("showOrig"),
+    copy: $("copy"), download: $("download"), progress: $("progress"), stats: $("stats"),
+    shareLink: $("shareLink"), exportFile: $("exportFile"), importBtn: $("importBtn"), importFile: $("importFile"), fileHint: $("fileHint"),
+    linkOut: $("linkOut"),
+    views: $("views"), origView: $("origView"), origFrame: $("origFrame"), origCanvas: $("origCanvas"),
+    outFrame: $("outFrame"), outCanvas: $("outCanvas"), empty: $("empty"),
+    outViewport: $("outViewport"), origViewport: $("origViewport"),
+    usage: $("usage"), usageSummary: $("usageSummary"), toast: $("toast"),
+  };
+
+  // Restore per-viewer settings.
+  if (typeof saved.brightness === "number") el.brightness.value = saved.brightness;
+  // Older saves stored dithering as an on/off flag for Bayer.
+  if (typeof saved.dither === "boolean") el.mode.value = saved.dither ? "bayer" : "off";
+  if (["off", "bayer", "ab"].includes(saved.mode)) el.mode.value = saved.mode;
+  if (typeof saved.mix === "number") el.mix.value = saved.mix;
+  if (saved.bayer) el.bayer.value = String(saved.bayer);
+  if (typeof saved.strength === "number") el.strength.value = saved.strength;
+  if (typeof saved.alpha === "number") el.alpha.value = saved.alpha;
+  if (typeof saved.grid === "boolean") el.grid.checked = saved.grid;
+  if (typeof saved.showOrig === "boolean") el.showOrig.checked = saved.showOrig;
+
+  function persist() {
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify({
+        enabled: [...enabled], brightness: el.brightness.valueAsNumber || 0, mode: el.mode.value,
+        bayer: +el.bayer.value, strength: +el.strength.value, mix: +el.mix.value, alpha: el.alpha.valueAsNumber,
+        grid: el.grid.checked, showOrig: el.showOrig.checked,
+      }));
+    } catch {}
+  }
+
+  // ---- Palette swatches ----
+  function buildSwatches(container, ids) {
+    for (const i of ids) {
+      const b = document.createElement("button");
+      b.className = "sw";
+      b.style.background = `rgb(${COLORS_RGB[i]})`;
+      b.title = COLOR_NAMES[i];
+      b.dataset.id = i;
+      b.setAttribute("aria-label", COLOR_NAMES[i]);
+      b.setAttribute("aria-pressed", String(enabled.has(i)));
+      b.addEventListener("click", () => {
+        enabled.has(i) ? enabled.delete(i) : enabled.add(i);
+        b.setAttribute("aria-pressed", String(enabled.has(i)));
+        changed();
+      });
+      container.appendChild(b);
+    }
+  }
+  buildSwatches($("freeSw"), FREE);
+  buildSwatches($("paidSw"), PAID);
+  function syncSwatches() {
+    document.querySelectorAll(".sw").forEach((b) => b.setAttribute("aria-pressed", String(enabled.has(+b.dataset.id))));
+  }
+  document.querySelectorAll("[data-group]").forEach((b) => b.addEventListener("click", () => {
+    const ids = b.dataset.group === "free" ? FREE : PAID;
+    for (const i of ids) b.dataset.on === "1" ? enabled.add(i) : enabled.delete(i);
+    syncSwatches(); changed();
+  }));
+  $("allColors").addEventListener("click", () => { FREE.concat(PAID).forEach((i) => enabled.add(i)); syncSwatches(); changed(); });
+
+  // ---- Image loading ----
+  let source = null; // { img, w, h, name }
+  function setSource(img, name, label) {
+    source = { img, w: img.width, h: img.height, name };
+    el.fileName.textContent = `${label} · ${img.width}×${img.height}`;
+    el.shareLink.disabled = el.exportFile.disabled = false;
+    zoomFitPending = true;
+  }
+  async function loadFile(file) {
+    if (!file) return;
+    if (/\.json$/i.test(file.name) || file.type === "application/json") { importText(await file.text()); return; }
+    if (!file.type.startsWith("image/")) { toast("That file isn't an image."); return; }
+    try {
+      const img = await createImageBitmap(file);
+      setSource(img, (file.name || "pasted").replace(/\.[^.]+$/, ""), file.name || "Pasted image");
+      // Large photos are slow to match at full size, so start at a manageable width.
+      setWidth(Math.min(img.width, 400));
+      changed();
+    } catch {
+      toast("Couldn't read that image.");
+    }
+  }
+  el.drop.addEventListener("click", () => el.file.click());
+  el.drop.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); el.file.click(); } });
+  el.file.addEventListener("change", () => { loadFile(el.file.files[0]); el.file.value = ""; });
+  ["dragenter", "dragover"].forEach((t) => document.addEventListener(t, (e) => { e.preventDefault(); el.drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach((t) => document.addEventListener(t, (e) => { e.preventDefault(); el.drop.classList.remove("over"); }));
+  document.addEventListener("drop", (e) => loadFile(e.dataTransfer?.files?.[0]));
+  document.addEventListener("paste", (e) => {
+    const item = [...(e.clipboardData?.items || [])].find((it) => it.type.startsWith("image/"));
+    if (item) { loadFile(item.getAsFile()); return; }
+    // Pasting a share link (or a payload's text) anywhere on the page opens it, unless the
+    // paste is going into one of the page's own input boxes.
+    const text = e.clipboardData?.getData("text") || "";
+    if (e.target.closest?.("input, textarea, select")) return;
+    if (text.includes(SHARE_PREFIX) || text.trim().startsWith("{")) { e.preventDefault(); importText(text); }
+  });
+
+  // ---- Slider number boxes ----
+  // Each slider has a number box beside it. Typing applies the value as soon as it's a valid
+  // number in range; leaving the box (or Enter) clamps it and shows the value actually in use.
+  // While a box is being typed in, the code that syncs it from its slider leaves it alone so the
+  // text doesn't jump under the cursor.
+  let typing = null;
+  function showNum(num, v, digits = 0) {
+    if (typing !== num) num.value = String(+v.toFixed(digits));
+  }
+  function linkNum(num, apply, sync) {
+    num.addEventListener("input", () => {
+      const v = num.valueAsNumber;
+      if (!Number.isFinite(v) || v < +num.min || v > +num.max) return;
+      typing = num;
+      try { apply(v); } finally { typing = null; }
+    });
+    num.addEventListener("change", () => {
+      const v = num.valueAsNumber;
+      if (Number.isFinite(v)) apply(Math.min(+num.max, Math.max(+num.min, v)));
+      sync();
+    });
+  }
+
+  // ---- Size (height follows width through the aspect ratio, truncated) ----
+  const ratio = () => source.w / source.h;
+  function heightFor(w) { return Math.max(1, w / ratio() | 0); }
+  function setWidth(w) {
+    w = Math.max(1, Math.min(4000, Math.round(w) || 1));
+    el.width.value = w;
+    if (el.lock.checked && source) el.height.value = heightFor(w);
+    syncScale();
+  }
+  function syncScale() {
+    if (!source) return;
+    const pct = +el.width.value / source.w * 100;
+    el.scale.value = Math.max(+el.scale.min, Math.min(+el.scale.max, Math.round(pct)));
+    showNum(el.scaleNum, pct, 1);
+  }
+  el.scale.addEventListener("input", () => { if (!source) return; setWidth(source.w * el.scale.value / 100); changed(); });
+  // The box can go past the slider's range, up to the 4000px width cap. Scaling above 100%
+  // is nearest-neighbor too, so each source pixel just becomes a block of identical pixels.
+  linkNum(el.scaleNum, (v) => { if (!source) return; setWidth(source.w * v / 100); changed(); }, syncScale);
+  el.width.addEventListener("input", () => { if (!source) return; if (el.lock.checked) el.height.value = heightFor(+el.width.value || 1); syncScale(); changed(); });
+  el.height.addEventListener("input", () => {
+    if (!source) return;
+    if (el.lock.checked) { el.width.value = Math.max(1, (+el.height.value || 1) * ratio() | 0); syncScale(); }
+    changed();
+  });
+  el.lock.addEventListener("change", () => { if (el.lock.checked && source) setWidth(+el.width.value); changed(); });
+  function targetSize() {
+    const w = Math.max(1, Math.min(4000, +el.width.value | 0 || 1));
+    const h = el.lock.checked ? heightFor(w) : Math.max(1, Math.min(4000, +el.height.value | 0 || 1));
+    return { w, h };
+  }
+
+  // ---- Color controls ----
+  function syncDitherUI() {
+    el.ditherOpts.hidden = el.mode.value !== "bayer";
+    el.abOpts.hidden = el.mode.value !== "ab";
+    showNum(el.strengthNum, +el.strength.value);
+    showNum(el.mixNum, +el.mix.value);
+  }
+  syncDitherUI();
+  el.mode.addEventListener("change", () => { syncDitherUI(); changed(); });
+  [el.strength, el.mix].forEach((c) => c.addEventListener("input", () => { syncDitherUI(); changed(); }));
+  linkNum(el.strengthNum, (v) => { el.strength.value = v; syncDitherUI(); changed(); }, syncDitherUI);
+  linkNum(el.mixNum, (v) => { el.mix.value = v; syncDitherUI(); changed(); }, syncDitherUI);
+  [el.bayer, el.brightness, el.alpha].forEach((c) => c.addEventListener("input", changed));
+
+  // ---- Worker ----
+  const workerUrl = URL.createObjectURL(new Blob(
+    [$("core").textContent, "\n", $("worker-src").textContent], { type: "text/javascript" }));
+  let worker = null, busy = false, jobId = 0, jobStart = 0;
+  let result = null; // { w, h, indices, counts }
+
+  function spawn() {
+    worker = new Worker(workerUrl);
+    worker.onmessage = (e) => {
+      const m = e.data;
+      if (m.id !== jobId) return;
+      if (!m.done) { setProgress(m.progress); return; }
+      busy = false;
+      setProgress(null);
+      showResult(m);
+    };
+  }
+
+  let timer = 0;
+  function changed() {
+    persist();
+    clearTimeout(timer);
+    timer = setTimeout(run, 120);
+  }
+
+  function run() {
+    if (!source) return;
+    const { w, h } = targetSize();
+    const c = el.origCanvas;
+    c.width = w; c.height = h;
+    const ctx = c.getContext("2d", { willReadFrequently: true });
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, w, h);
+    ctx.drawImage(source.img, 0, 0, w, h);
+    const data = ctx.getImageData(0, 0, w, h).data;
+    // A newer request supersedes the running one. Restarting the worker is cheaper than
+    // waiting for a stale result on a big image.
+    if (busy && worker) { worker.terminate(); worker = null; }
+    if (!worker) spawn();
+    busy = true;
+    jobId++;
+    jobStart = performance.now();
+    setProgress(0);
+    const cut = el.alpha.valueAsNumber;
+    worker.postMessage({
+      id: jobId, data, w, h,
+      brightness: el.brightness.valueAsNumber || 0,
+      enabled: [...enabled],
+      alphaCutoff: Number.isFinite(cut) ? cut : 100,
+      mode: el.mode.value,
+      bayerSize: +el.bayer.value,
+      strength: +el.strength.value / 100,
+      // Mixing 0% charges enough for pair contrast that a pair essentially never wins;
+      // 100% charges nothing, so any pair whose blend is closer than a single color is used.
+      mixLimit: MIX_LIMIT_MAX * (1 - el.mix.value / 100),
+    }, [data.buffer]);
+    el.origFrame.hidden = false;
+    applyView();
+  }
+  const MIX_LIMIT_MAX = 0.4;
+
+  function setProgress(p) {
+    el.progress.classList.toggle("idle", p === null);
+    el.progress.firstElementChild.style.width = p === null ? "100%" : (p * 100).toFixed(1) + "%";
+  }
+
+  function showResult(m) {
+    const c = el.outCanvas;
+    c.width = m.w; c.height = m.h;
+    c.getContext("2d").putImageData(new ImageData(m.rgba, m.w, m.h), 0, 0);
+    result = m;
+    el.empty.hidden = true;
+    el.outFrame.hidden = false;
+    el.copy.disabled = el.download.disabled = false;
+    if (zoomFitPending) { zoomFitPending = false; fitZoom(); } else applyView();
+
+    let painted = 0, used = [];
+    for (let i = 1; i < 64; i++) if (m.counts[i]) { painted += m.counts[i]; used.push(i); }
+    used.sort((a, b) => m.counts[b] - m.counts[a]);
+    const ms = performance.now() - jobStart;
+    el.stats.textContent = `${m.w}×${m.h} · ${painted.toLocaleString()} pixels to paint · ${used.length} colors · ${ms.toFixed(0)} ms`;
+    el.usageSummary.textContent = `${used.length} of ${enabled.size} enabled`;
+    el.usage.replaceChildren(...(used.length ? used.map((i) => {
+      const d = document.createElement("div");
+      d.className = "item";
+      d.innerHTML = `<span class="chip" style="background:rgb(${COLORS_RGB[i]})"></span>` +
+        `<span class="name">${COLOR_NAMES[i]}${i > 31 ? " 💧" : ""}</span>` +
+        `<span class="n">${m.counts[i].toLocaleString()}</span>`;
+      return d;
+    }) : [Object.assign(document.createElement("span"), { className: "stats", textContent: "No pixels to paint." })]));
+  }
+
+  // ---- Pan & zoom ----
+  // Both views share one camera: a zoom level plus the offset of the image center from the
+  // viewport center. Storing the offset from center (rather than a top-left position) keeps
+  // the two views aligned even when they're different sizes.
+  // The slider is logarithmic so it covers 0.2x to 40x smoothly. ZMIN matches the zoom box's
+  // min, which is also where its 0.1 steps start counting from, so the arrows land on tenths.
+  const ZMIN = 0.2, ZMAX = 40;
+  const sliderToZoom = (v) => ZMIN * Math.pow(ZMAX / ZMIN, v / 100);
+  const zoomToSlider = (z) => Math.log(z / ZMIN) / Math.log(ZMAX / ZMIN) * 100;
+  let zoom = 1, panX = 0, panY = 0, zoomFitPending = false;
+  el.zoom.value = zoomToSlider(1);
+  const views = [[el.outViewport, el.outFrame, el.outCanvas], [el.origViewport, el.origFrame, el.origCanvas]];
+
+  function imageSize() { return result ? result : targetSize(); }
+  // Keep at least part of the image on screen so it can't be dragged away and lost.
+  function clampPan() {
+    const { w, h } = imageSize();
+    const vp = el.outViewport;
+    const keep = 48;
+    const maxX = Math.max(0, (vp.clientWidth + w * zoom) / 2 - keep);
+    const maxY = Math.max(0, (vp.clientHeight + h * zoom) / 2 - keep);
+    panX = Math.min(maxX, Math.max(-maxX, panX));
+    panY = Math.min(maxY, Math.max(-maxY, panY));
+  }
+  function applyView() {
+    showNum(el.zoomNum, zoom, zoom >= 10 ? 0 : zoom >= 1 ? 1 : 2);
+    if (!source) return;
+    const { w, h } = imageSize();
+    clampPan();
+    for (const [vp, frame, canvas] of views) {
+      const left = vp.clientWidth / 2 + panX - w * zoom / 2;
+      const top = vp.clientHeight / 2 + panY - h * zoom / 2;
+      canvas.style.width = (w * zoom) + "px";
+      canvas.style.height = (h * zoom) + "px";
+      frame.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
+      frame.style.setProperty("--z", zoom + "px");
+      frame.classList.toggle("grid", el.grid.checked && zoom >= 4);
+    }
+  }
+  // Zoom around a point given in viewport coordinates; the image pixel under it stays put.
+  function setZoom(z, vp = el.outViewport, ax = vp.clientWidth / 2, ay = vp.clientHeight / 2) {
+    const next = Math.min(ZMAX, Math.max(ZMIN, z));
+    const k = next / zoom;
+    panX = (ax - vp.clientWidth / 2) * (1 - k) + panX * k;
+    panY = (ay - vp.clientHeight / 2) * (1 - k) + panY * k;
+    zoom = next;
+    el.zoom.value = zoomToSlider(zoom);
+    applyView();
+  }
+  function fitZoom() {
+    const { w, h } = imageSize();
+    const vp = el.outViewport;
+    zoom = Math.max(ZMIN, Math.min(ZMAX, Math.min((vp.clientWidth - 24) / w, (vp.clientHeight - 24) / h)));
+    panX = panY = 0;
+    el.zoom.value = zoomToSlider(zoom);
+    applyView();
+  }
+  el.zoom.addEventListener("input", () => setZoom(sliderToZoom(+el.zoom.value)));
+  linkNum(el.zoomNum, (v) => setZoom(v), applyView);
+  el.fit.addEventListener("click", fitZoom);
+  el.grid.addEventListener("change", () => { applyView(); persist(); });
+  for (const [vp] of views) {
+    vp.addEventListener("wheel", (e) => {
+      if (!e.ctrlKey || !source) return;
+      e.preventDefault();
+      const r = vp.getBoundingClientRect();
+      // Trackpad pinches arrive as small ctrl+wheel deltas, so scale by the delta.
+      const step = Math.exp(-Math.max(-100, Math.min(100, e.deltaY)) * 0.0015);
+      setZoom(zoom * step, vp, e.clientX - r.left, e.clientY - r.top);
+    }, { passive: false });
+    // Left-drag pans both views together.
+    let drag = null;
+    vp.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0 || !source) return;
+      drag = { id: e.pointerId, x: e.clientX, y: e.clientY, px: panX, py: panY };
+      vp.setPointerCapture(e.pointerId);
+      vp.classList.add("dragging");
+    });
+    vp.addEventListener("pointermove", (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      panX = drag.px + e.clientX - drag.x;
+      panY = drag.py + e.clientY - drag.y;
+      applyView();
+    });
+    const end = (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      drag = null;
+      vp.classList.remove("dragging");
+    };
+    vp.addEventListener("pointerup", end);
+    vp.addEventListener("pointercancel", end);
+  }
+  window.addEventListener("resize", applyView);
+  function syncOrigView() {
+    el.origView.hidden = !el.showOrig.checked;
+    el.views.classList.toggle("single", !el.showOrig.checked);
+    applyView();
+  }
+  syncOrigView();
+  el.showOrig.addEventListener("change", () => { syncOrigView(); persist(); });
+
+  // ---- Output ----
+  const outBlob = () => new Promise((res) => el.outCanvas.toBlob(res, "image/png"));
+  function saveBlob(blob, name) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+  el.download.addEventListener("click", async () => {
+    saveBlob(await outBlob(), `${source?.name || "image"}-wplace-${result.w}x${result.h}.png`);
+  });
+  el.copy.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": outBlob() })]);
+      toast("Copied to clipboard");
+    } catch {
+      toast("This browser blocked clipboard access. Use Download instead.");
+    }
+  });
+
+  // ---- Sharing ----
+  // A payload is the source image plus every setting that affects the conversion. Share links
+  // carry it deflate-compressed in the URL hash, which browsers never send to a server.
+  const SHARE_PREFIX = "#s=";
+  const PAYLOAD_APP = "wplace-image-converter";
+  const LINK_WARN = 32000;   // Some chat apps cut links off past roughly this length.
+  const LINK_MAX = 2000000;  // About Chrome's URL length limit.
+
+  function settingsPayload() {
+    const { w, h } = targetSize();
+    const cut = el.alpha.valueAsNumber;
+    return {
+      width: w, height: h, lock: el.lock.checked,
+      brightness: el.brightness.valueAsNumber || 0,
+      mode: el.mode.value, bayer: +el.bayer.value, strength: +el.strength.value, mix: +el.mix.value,
+      alpha: Number.isFinite(cut) ? cut : 100,
+      enabled: [...enabled].sort((a, b) => a - b),
+    };
+  }
+  function imageDataUrl(w, h) {
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const ctx = c.getContext("2d");
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(source.img, 0, 0, w, h);
+    return c.toDataURL("image/png");
+  }
+  // A file carries the original at full size so it can still be resized freely. A link carries
+  // the image already resized to the current width and height: that reproduces the same result
+  // exactly (resizing is nearest-neighbor) and keeps the link far shorter.
+  function buildPayload(full) {
+    const settings = settingsPayload();
+    const image = full ? imageDataUrl(source.w, source.h) : imageDataUrl(settings.width, settings.height);
+    return { app: PAYLOAD_APP, v: 1, name: source.name, image, settings };
+  }
+
+  async function deflate(text) {
+    const stream = new Blob([text]).stream().pipeThrough(new CompressionStream("deflate-raw"));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+  async function inflate(bytes) {
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+    return new Response(stream).text();
+  }
+  function toBase64Url(bytes) {
+    let s = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function fromBase64Url(str) {
+    const bin = atob(str.replace(/-/g, "+").replace(/_/g, "/"));
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
+  el.fileHint.hidden = location.protocol !== "file:";
+  el.shareLink.addEventListener("click", async () => {
+    if (!source) return;
+    const code = toBase64Url(await deflate(JSON.stringify(buildPayload(false))));
+    const link = location.href.split("#")[0] + SHARE_PREFIX + code;
+    if (link.length > LINK_MAX) { toast("This image is too big for a link. Use Export file instead.", 4000); return; }
+    el.linkOut.value = link;
+    el.linkOut.hidden = false;
+    el.linkOut.select();
+    let copied = false;
+    try { await navigator.clipboard.writeText(link); copied = true; } catch {}
+    const size = link.length >= 1024 ? `${Math.round(link.length / 1024)} KB` : `${link.length} characters`;
+    if (!copied) toast("Couldn't copy automatically. Copy the link from the box.", 4000);
+    else if (link.length > LINK_WARN) toast(`Link copied (${size}). It's long, so if a chat app cuts it off, send an exported file instead.`, 6000);
+    else toast(`Share link copied (${size})`);
+  });
+  el.exportFile.addEventListener("click", () => {
+    if (!source) return;
+    saveBlob(new Blob([JSON.stringify(buildPayload(true))], { type: "application/json" }), `${source.name}.wplace.json`);
+  });
+  el.importBtn.addEventListener("click", () => el.importFile.click());
+  el.importFile.addEventListener("change", async () => {
+    const f = el.importFile.files[0];
+    el.importFile.value = "";
+    if (f) importText(await f.text());
+  });
+
+  // Accepts a share link (or just its #s=... part) or the text of an exported file.
+  async function importText(text) {
+    try {
+      text = text.trim();
+      const at = text.indexOf(SHARE_PREFIX);
+      const json = at >= 0 ? await inflate(fromBase64Url(text.slice(at + SHARE_PREFIX.length).split(/[\s&#]/)[0])) : text;
+      await applyPayload(JSON.parse(json));
+    } catch {
+      toast("That doesn't look like a share link or exported file.", 4000);
+    }
+  }
+  // Payloads come from other people, so every field is checked and clamped before use.
+  async function applyPayload(p) {
+    if (!p || p.app !== PAYLOAD_APP || typeof p.image !== "string" || !p.image.startsWith("data:image/")) throw new Error("bad payload");
+    const img = await createImageBitmap(await (await fetch(p.image)).blob());
+    const s = p.settings || {};
+    const num = (v, lo, hi, fallback) => Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : fallback;
+    el.brightness.value = num(s.brightness, -100, 100, 0);
+    el.mode.value = ["off", "bayer", "ab"].includes(s.mode) ? s.mode : "off";
+    el.bayer.value = [2, 4, 8].includes(s.bayer) ? String(s.bayer) : "4";
+    el.strength.value = num(s.strength, 0, 200, 100);
+    el.mix.value = num(s.mix, 0, 100, 40);
+    el.alpha.value = num(s.alpha, 0, 256, 100);
+    if (Array.isArray(s.enabled)) {
+      enabled.clear();
+      for (const i of s.enabled) if (Number.isInteger(i) && i > 0 && i < 64) enabled.add(i);
+    }
+    syncSwatches();
+    syncDitherUI();
+    const name = typeof p.name === "string" && p.name ? p.name.slice(0, 100) : "shared";
+    setSource(img, name, `${name} (shared)`);
+    el.lock.checked = s.lock !== false;
+    setWidth(num(s.width, 1, 4000, Math.min(img.width, 400)));
+    if (!el.lock.checked) el.height.value = num(s.height, 1, 4000, img.height) | 0;
+    changed();
+    toast("Opened shared image");
+  }
+  // Opening a share link, or pasting a new one into this tab's address bar.
+  if (location.hash.startsWith(SHARE_PREFIX)) importText(location.hash);
+  window.addEventListener("hashchange", () => { if (location.hash.startsWith(SHARE_PREFIX)) importText(location.hash); });
+
+  let toastTimer = 0;
+  function toast(msg, ms = 2200) {
+    el.toast.textContent = msg;
+    el.toast.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.toast.classList.remove("show"), ms);
+  }
+})();
+</script>
+</body>
+</html>
