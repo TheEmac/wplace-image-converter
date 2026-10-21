@@ -256,8 +256,6 @@
           <option value="off">Off</option>
           <option value="bayer">Bayer lattice</option>
           <option value="ab">AB lattice (checkerboard)</option>
-          <option value="floyd">Error diffusion (Floyd–Steinberg)</option>
-          <option value="atkinson">Error diffusion (Atkinson)</option>
         </select>
       </div>
       <div class="sub" id="abOpts" hidden>
@@ -269,7 +267,7 @@
         <p class="hint">Where a 50/50 checkerboard of two colors matches better than any single color, those two colors alternate. Higher mixing allows more of it, including more contrasting pairs.</p>
       </div>
       <div class="sub" id="ditherOpts" hidden>
-        <div class="row" id="bayerRow">
+        <div class="row">
           <label for="bayer">Matrix</label>
           <select id="bayer">
             <option value="2">2×2</option>
@@ -282,7 +280,28 @@
           <input type="range" id="strength" class="grow" min="0" max="200" value="100">
           <span class="num"><input type="number" id="strengthNum" min="0" max="200" step="1" value="100" aria-label="Strength percent">%</span>
         </div>
-        <p class="hint" id="diffuseHint">Spreads each pixel's color error onto its neighbors in OKLab, so areas between palette colors keep their average hue. Atkinson passes on less error, giving cleaner flat areas.</p>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <label for="diffuse">Error diffusion</label>
+        <select id="diffuse">
+          <option value="off">Off</option>
+          <option value="pattern">Lattice pattern</option>
+          <option value="floyd">Floyd–Steinberg</option>
+          <option value="atkinson">Atkinson</option>
+        </select>
+      </div>
+      <div class="sub" id="diffuseOpts" hidden>
+        <div class="row">
+          <label for="dlimit" style="min-width:58px">Threshold</label>
+          <input type="range" id="dlimit" class="grow" min="0" max="100" value="40">
+          <span class="num"><input type="number" id="dlimitNum" min="0" max="100" step="1" value="40" aria-label="Threshold percent">%</span>
+        </div>
+        <div class="row">
+          <label for="dstrength" style="min-width:58px">Strength</label>
+          <input type="range" id="dstrength" class="grow" min="0" max="100" value="100">
+          <span class="num"><input type="number" id="dstrengthNum" min="0" max="100" step="1" value="100" aria-label="Diffusion strength percent">%</span>
+        </div>
+        <p class="hint">Takes over from the dithering above wherever its result, seen from a distance, is still too far from the original color. Higher thresholds only touch the worst areas; 0% covers everything. Lattice pattern blends two colors in any ratio on the same grid as the dithering, so it stays tidy. Floyd–Steinberg and Atkinson spread each pixel's error onto its neighbors, which is freer but noisier; Atkinson passes on less of it.</p>
       </div>
       <details style="margin-top:10px">
         <summary>Advanced</summary>
@@ -599,12 +618,12 @@ const DITHER_SPREAD = 48;
 // AB lattice: what a 50/50 checkerboard of palette colors i and j looks like from a distance.
 // Light mixes linearly, so the two colors are averaged in linear sRGB before going to OKLab.
 const PAIR_LAB = new Array(64 * 64);
+const linear = (v) => srgbNonlinearTransformInv(v / 255);
+const encode = (c) => 255 * (c > 0.0031308 ? 1.055 * c ** (1 / 2.4) - 0.055 : 12.92 * c);
 function pairLab(i, j) {
   const k = i * 64 + j;
   if (!PAIR_LAB[k]) {
-    const lin = (v) => srgbNonlinearTransformInv(v / 255);
-    const enc = (c) => 255 * (c > 0.0031308 ? 1.055 * c ** (1 / 2.4) - 0.055 : 12.92 * c);
-    const mix = (o) => enc((lin(RGB[i * 3 + o]) + lin(RGB[j * 3 + o])) / 2);
+    const mix = (o) => encode((linear(RGB[i * 3 + o]) + linear(RGB[j * 3 + o])) / 2);
     PAIR_LAB[k] = rgbToOklab(mix(0), mix(1), mix(2));
   }
   return PAIR_LAB[k];
@@ -612,6 +631,11 @@ function pairLab(i, j) {
 // Only the closest few single colors are tried as pair members. Pairs of far-apart colors
 // never win against a near single color, and this keeps the search at a few dozen checks.
 const AB_CANDIDATES = 8;
+// Lattice pattern recovery searches a little wider than AB, since it's only used where AB
+// or Bayer already came up short.
+const PLAN_CANDIDATES = 12;
+// Same scale as the page's AB mixing limit: the contrast charge at 0% strength.
+const MIX_LIMIT_MAX = 0.4;
 
 // Error-diffusion kernels as [dx, dy, weight]. dx is mirrored on right-to-left rows.
 const KERNELS = {
@@ -619,9 +643,14 @@ const KERNELS = {
   atkinson: [[1, 0, 1 / 8], [2, 0, 1 / 8], [-1, 1, 1 / 8], [0, 1, 1 / 8], [1, 1, 1 / 8], [0, 2, 1 / 8]],
 };
 const clamp = (v, lo, hi) => v < lo ? lo : v > hi ? hi : v;
+const nudge = (v, o) => Math.min(255, Math.max(0, Math.round(v + o)));
+// Diffusion fades in over this distance below the threshold, so the switch between the
+// dithering pattern and diffused pixels doesn't leave a hard edge.
+const DIFFUSE_RAMP = 0.015;
 
 onmessage = (e) => {
-  const { id, data, w, h, brightness, enabled, alphaCutoff, mode, bayerSize, strength, mixLimit } = e.data;
+  const { id, data, w, h, brightness, enabled, alphaCutoff, mode, bayerSize, strength, mixLimit,
+    diffuse, diffuseStrength, diffuseLimit } = e.data;
   const on = new Uint8Array(64);
   const list = [];
   for (const i of enabled) if (i > 0 && i < 64) { on[i] = 1; list.push(i); }
@@ -629,16 +658,61 @@ onmessage = (e) => {
   const rgba = new Uint8ClampedArray(w * h * 4);
   const indices = new Uint8Array(w * h);
   const counts = new Uint32Array(64);
-  const cache = new Map();
+  const singleCache = new Map(), pairCache = new Map(), lossCache = new Map(), labCache = new Map();
   const matrix = mode === "bayer" ? bayer(bayerSize) : null;
   const cells = bayerSize * bayerSize;
   const amp = matrix ? strength * DITHER_SPREAD : 0;
   const ab = mode === "ab";
-  const kernel = KERNELS[mode] || null;
+  const kernel = KERNELS[diffuse] || null;
+  // Lattice pattern recovery lays a two-color blend out on a Bayer tile instead of diffusing
+  // error pixel to pixel. It uses the same tile as the dithering, so it lines up with it:
+  // 2×2 for AB, where a 50/50 blend is exactly the AB checkerboard, the chosen matrix for
+  // Bayer, and 4×4 with no dithering.
+  const pattern = diffuse === "pattern";
+  const tileSize = !pattern ? 0 : ab ? 2 : matrix ? bayerSize : 4;
+  const tile = pattern ? bayer(tileSize) : null;
+  const tileCells = tileSize * tileSize;
+  // An 8×8 tile has 64 cells, but blends finer than sixteenths aren't visible.
+  const planSteps = Math.min(tileCells, 16);
+  const planCache = new Map();
+  // What a tile with k of planSteps cells in color j and the rest in color i looks like.
+  const mixCache = new Map();
+  function mixLab(i, j, k) {
+    const key = (i * 64 + j) * 64 + k;
+    let m = mixCache.get(key);
+    if (m === undefined) {
+      const f = k / planSteps;
+      const mix = (o) => encode(linear(RGB[i * 3 + o]) * (1 - f) + linear(RGB[j * 3 + o]) * f);
+      m = rgbToOklab(mix(0), mix(1), mix(2));
+      mixCache.set(key, m);
+    }
+    return m;
+  }
+  // Diffusing more than 100% of the error compounds from pixel to pixel and blows up.
+  const dStrength = Math.min(diffuseStrength, 1);
   // Three rolling rows of pending OKLab error (rows y, y+1 and y+2), 3 floats per pixel.
   const err = kernel ? new Float32Array(w * 9) : null;
-  const labCache = new Map();
   let misses = 0;
+
+  // Nearest enabled single color to an sRGB value.
+  function matchRGB(r, g, b) {
+    const key = (r << 16) | (g << 8) | b;
+    let best = COLORS_LOOKUP[key];
+    if (best < 0 || !on[best]) {
+      best = singleCache.get(key);
+      if (best === undefined) {
+        misses++;
+        const lab = rgbToOklab(r, g, b);
+        let minDelta = Infinity;
+        for (let k = 0; k < list.length; k++) {
+          const delta = deltaE2000(lab, COLORS[list[k]], brightness);
+          if (delta < minDelta) { minDelta = delta; best = list[k]; }
+        }
+        singleCache.set(key, best);
+      }
+    }
+    return best;
+  }
 
   // Nearest enabled color to an OKLab value. Diffused values are continuous, so the cache is
   // keyed on a 1/511 grid, well below a visible OKLab difference.
@@ -680,10 +754,99 @@ onmessage = (e) => {
     }
     return bestA * 64 + bestB;
   }
+  function pairFor(key, r, g, b) {
+    let pair = pairCache.get(key);
+    if (pair === undefined) { misses++; pair = matchPair(r, g, b); pairCache.set(key, pair); }
+    return pair;
+  }
+
+  // What the dithering mode paints at (x, y) for a color that isn't already in the palette.
+  function basePixel(x, y, key, r, g, b) {
+    if (ab) {
+      const pair = pairFor(key, r, g, b);
+      // The A/B order is fixed by palette index, so neighboring areas that share a color
+      // keep it on the same checkerboard cells and the lattice stays continuous.
+      return (x + y) & 1 ? pair & 63 : pair >> 6;
+    }
+    if (amp) {
+      // Ordered dithering: nudge the pixel by a fixed per-cell threshold before matching.
+      // The nudge repeats every bayerSize pixels, which is what gives the regular lattice.
+      const o = ((matrix[y % bayerSize][x % bayerSize] + 0.5) / cells - 0.5) * amp;
+      return matchRGB(nudge(r, o), nudge(g, o), nudge(b, o));
+    }
+    return matchRGB(r, g, b);
+  }
+
+  // How much color the dithering mode loses for a source color, judged from a distance: the
+  // gap to the single matched color, to the AB pair's blend, or to the average over a whole
+  // Bayer cell. Light mixes linearly, so Bayer cells are averaged in linear sRGB.
+  function colorLoss(key, r, g, b, lab) {
+    // The loss changes slowly with color and only feeds a soft threshold, so it's shared
+    // across 4×4×4 blocks of sRGB. That matters for photos and their thousands of colors.
+    key = ((r >> 2) << 12) | ((g >> 2) << 6) | (b >> 2);
+    let d = lossCache.get(key);
+    if (d === undefined) {
+      let seen;
+      if (ab) {
+        const pair = pairFor(key, r, g, b);
+        seen = pairLab(pair >> 6, pair & 63);
+      } else if (amp) {
+        const sum = [0, 0, 0];
+        for (let v = 0; v < cells; v++) {
+          const o = ((v + 0.5) / cells - 0.5) * amp;
+          const c = matchRGB(nudge(r, o), nudge(g, o), nudge(b, o));
+          for (let ch = 0; ch < 3; ch++) sum[ch] += linear(RGB[c * 3 + ch]);
+        }
+        seen = rgbToOklab(encode(sum[0] / cells), encode(sum[1] / cells), encode(sum[2] / cells));
+      } else {
+        seen = COLORS[matchRGB(r, g, b)];
+      }
+      d = deltaE2000(lab, seen, 0);
+      lossCache.set(key, d);
+    }
+    return d;
+  }
+
+  // The two palette colors and mix ratio whose blend best matches a source color, packed as
+  // (a * 64 + b) * 64 + k: b fills k of every PLAN_STEPS tile cells and a the rest. Every
+  // pair of the closest PLAN_CANDIDATES colors is tried at every ratio the tile allows, so
+  // the blend can recover hue that no single color has. Like the AB mixing limit, a charge
+  // for contrast keeps pairs from winning on a hair; penalty 0 lifts it entirely.
+  function planFor(key, r, g, b, penalty) {
+    let plan = planCache.get(key);
+    if (plan === undefined) {
+      misses++;
+      const lab = rgbToOklab(r, g, b);
+      const near = list.map((c) => [deltaE2000(lab, COLORS[c], brightness), c]).sort((p, q) => p[0] - q[0]);
+      const top = near.slice(0, PLAN_CANDIDATES);
+      let bestScore = top[0][0];
+      plan = (top[0][1] * 64 + top[0][1]) * 64;
+      for (let s = 0; s < top.length; s++) {
+        for (let t = s + 1; t < top.length; t++) {
+          const i = top[s][1], j = top[t][1];
+          const charge = penalty * deltaE2000(COLORS[i], COLORS[j], 0);
+          if (charge >= bestScore) continue;
+          // Find the ratio closest in plain OKLab distance, which is cheap, then score just it
+          // and its neighbors with the real distance.
+          let nearK = 1, nearD = Infinity;
+          for (let k = 1; k < planSteps; k++) {
+            const m = mixLab(i, j, k);
+            const d = (lab[0] - m[0]) ** 2 + (lab[1] - m[1]) ** 2 + (lab[2] - m[2]) ** 2;
+            if (d < nearD) { nearD = d; nearK = k; }
+          }
+          for (let k = Math.max(1, nearK - 1); k <= Math.min(planSteps - 1, nearK + 1); k++) {
+            const score = deltaE2000(lab, mixLab(i, j, k), brightness) + charge;
+            if (score < bestScore) { bestScore = score; plan = (i * 64 + j) * 64 + k; }
+          }
+        }
+      }
+      planCache.set(key, plan);
+    }
+    return plan;
+  }
 
   for (let y = 0; y < h; y++) {
     if (y % 64 === 0) postMessage({ id, progress: y / h });
-    const row = matrix ? matrix[y % bayerSize] : null;
     // Serpentine scan for diffusion, so the error doesn't streak in one direction.
     const rev = kernel !== null && (y & 1) === 1;
     if (kernel) err.fill(0, ((y + 2) % 3) * w * 3, ((y + 2) % 3 + 1) * w * 3);
@@ -692,76 +855,49 @@ onmessage = (e) => {
       const p = y * w + x;
       const i4 = p * 4;
       if (data[i4 + 3] < alphaCutoff || list.length === 0) continue;
-      let r = data[i4], g = data[i4 + 1], b = data[i4 + 2];
-      const exact = COLORS_LOOKUP[(r << 16) | (g << 8) | b];
-      // Pixels that are already an enabled palette color stay solid instead of being dithered.
-      if (kernel && !(exact > 0 && on[exact])) {
-        // Error diffusion: match the pixel plus the error its neighbors pushed onto it, then
-        // push what's left of this pixel's error further on.
-        const e0 = ((y % 3) * w + x) * 3;
-        const lab = rgbToOklab(r, g, b);
-        const L = clamp(lab[0] + err[e0], 0, 1);
-        const A = clamp(lab[1] + err[e0 + 1], -0.5, 0.5);
-        const B = clamp(lab[2] + err[e0 + 2], -0.5, 0.5);
-        const best = nearestLab(L, A, B);
-        const c = COLORS[best];
-        const s = Math.min(strength, 1);
-        const dL = (L - c[0]) * s, dA = (A - c[1]) * s, dB = (B - c[2]) * s;
-        for (let k = 0; k < kernel.length; k++) {
-          const [dx, dy, wt] = kernel[k];
-          const nx = rev ? x - dx : x + dx, ny = y + dy;
-          if (nx < 0 || nx >= w || ny >= h) continue;
-          const o = ((ny % 3) * w + nx) * 3;
-          err[o] += dL * wt; err[o + 1] += dA * wt; err[o + 2] += dB * wt;
-        }
-        indices[p] = best;
-        counts[best]++;
-        rgba[i4] = RGB[best * 3];
-        rgba[i4 + 1] = RGB[best * 3 + 1];
-        rgba[i4 + 2] = RGB[best * 3 + 2];
-        rgba[i4 + 3] = 255;
-        continue;
-      }
-      if (ab) {
-        let best = exact;
-        if (best < 0 || !on[best]) {
-          const key = (r << 16) | (g << 8) | b;
-          let pair = cache.get(key);
-          if (pair === undefined) { misses++; pair = matchPair(r, g, b); cache.set(key, pair); }
-          // The A/B order is fixed by palette index, so neighboring areas that share a color
-          // keep it on the same checkerboard cells and the lattice stays continuous.
-          best = (x + y) & 1 ? pair & 63 : pair >> 6;
-        }
-        indices[p] = best;
-        counts[best]++;
-        rgba[i4] = RGB[best * 3];
-        rgba[i4 + 1] = RGB[best * 3 + 1];
-        rgba[i4 + 2] = RGB[best * 3 + 2];
-        rgba[i4 + 3] = 255;
-        continue;
-      }
-      // Pixels that are already an enabled palette color stay solid instead of being dithered.
-      if (amp && !(exact > 0 && on[exact])) {
-        // Ordered dithering: nudge the pixel by a fixed per-cell threshold before matching.
-        // The nudge repeats every bayerSize pixels, which is what gives the regular lattice.
-        const o = ((row[x % bayerSize] + 0.5) / cells - 0.5) * amp;
-        r = Math.min(255, Math.max(0, Math.round(r + o)));
-        g = Math.min(255, Math.max(0, Math.round(g + o)));
-        b = Math.min(255, Math.max(0, Math.round(b + o)));
-      }
+      const r = data[i4], g = data[i4 + 1], b = data[i4 + 2];
       const key = (r << 16) | (g << 8) | b;
-      let best = COLORS_LOOKUP[key];
-      if (best < 0 || !on[best]) {
-        best = cache.get(key);
-        if (best === undefined) {
-          misses++;
-          const lab = rgbToOklab(r, g, b);
-          let minDelta = Infinity;
-          for (let k = 0; k < list.length; k++) {
-            const delta = deltaE2000(lab, COLORS[list[k]], brightness);
-            if (delta < minDelta) { minDelta = delta; best = list[k]; }
+      const exact = COLORS_LOOKUP[key];
+      let best;
+      if (exact > 0 && on[exact]) {
+        // Pixels that are already an enabled palette color stay solid, and take and pass on
+        // no diffusion error.
+        best = exact;
+      } else {
+        let gate = 0, lab = null;
+        if (kernel || pattern) {
+          // Diffusion takes over where the dithering loses too much color, fading in over
+          // DIFFUSE_RAMP below the threshold. With the threshold at 0 it covers everything.
+          lab = rgbToOklab(r, g, b);
+          gate = clamp((colorLoss(key, r, g, b, lab) - diffuseLimit) / DIFFUSE_RAMP + 1, 0, 1);
+        }
+        if (gate > 0 && pattern) {
+          // The gate depends only on the source color, so it can set the plan's contrast
+          // charge and still share the per-color plan cache. Full strength charges nothing.
+          const plan = planFor(key, r, g, b, MIX_LIMIT_MAX * (1 - dStrength * gate));
+          // Cells whose Bayer threshold falls in the first k steps take b, the rest a.
+          const k = plan & 63;
+          best = tile[y % tileSize][x % tileSize] * planSteps / tileCells < k ? (plan >> 6) & 63 : plan >> 12;
+        } else if (gate > 0) {
+          // Error diffusion: match the pixel plus the error its neighbors pushed onto it, then
+          // push what's left of this pixel's error further on.
+          const e0 = ((y % 3) * w + x) * 3;
+          const L = clamp(lab[0] + err[e0] * gate, 0, 1);
+          const A = clamp(lab[1] + err[e0 + 1] * gate, -0.5, 0.5);
+          const B = clamp(lab[2] + err[e0 + 2] * gate, -0.5, 0.5);
+          best = nearestLab(L, A, B);
+          const c = COLORS[best];
+          const s = dStrength * gate;
+          const dL = (L - c[0]) * s, dA = (A - c[1]) * s, dB = (B - c[2]) * s;
+          for (let k = 0; k < kernel.length; k++) {
+            const [dx, dy, wt] = kernel[k];
+            const nx = rev ? x - dx : x + dx, ny = y + dy;
+            if (nx < 0 || nx >= w || ny >= h) continue;
+            const o = ((ny % 3) * w + nx) * 3;
+            err[o] += dL * wt; err[o + 1] += dA * wt; err[o + 2] += dB * wt;
           }
-          cache.set(key, best);
+        } else {
+          best = basePixel(x, y, key, r, g, b);
         }
       }
       indices[p] = best;
@@ -783,7 +919,17 @@ onmessage = (e) => {
   for (let i = 1; i < 64; i++) (i <= 31 ? FREE : PAID).push(i);
 
   const STORE_KEY = "wplace-converter-v1";
-  const DITHER_MODES = ["off", "bayer", "ab", "floyd", "atkinson"];
+  const DITHER_MODES = ["off", "bayer", "ab"];
+  const DIFFUSE_MODES = ["off", "pattern", "floyd", "atkinson"];
+  // Error diffusion used to be a dithering mode of its own, with "Keep solid" as its
+  // threshold. That's the same as no dithering with diffusion layered on top.
+  function migrateDither(s) {
+    if (!["floyd", "atkinson"].includes(s.mode)) return s;
+    return {
+      ...s, mode: "off", diffuse: s.mode, dlimit: typeof s.solid === "number" ? s.solid : 0,
+      dstrength: Math.min(typeof s.strength === "number" ? s.strength : 100, 100), strength: 100,
+    };
+  }
   const saved = (() => { try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch { return {}; } })();
   const enabled = new Set(Array.isArray(saved.enabled) ? saved.enabled : [...FREE, ...PAID]);
 
@@ -793,6 +939,8 @@ onmessage = (e) => {
     brightness: $("brightness"), mode: $("mode"), ditherOpts: $("ditherOpts"), bayer: $("bayer"),
     strength: $("strength"), strengthNum: $("strengthNum"), alpha: $("alpha"),
     abOpts: $("abOpts"), mix: $("mix"), mixNum: $("mixNum"),
+    diffuse: $("diffuse"), diffuseOpts: $("diffuseOpts"), dlimit: $("dlimit"), dlimitNum: $("dlimitNum"),
+    dstrength: $("dstrength"), dstrengthNum: $("dstrengthNum"),
     zoom: $("zoom"), zoomNum: $("zoomNum"), fit: $("fit"), grid: $("grid"), showOrig: $("showOrig"),
     copy: $("copy"), download: $("download"), progress: $("progress"), stats: $("stats"),
     shareLink: $("shareLink"), exportFile: $("exportFile"), importBtn: $("importBtn"), importFile: $("importFile"), fileHint: $("fileHint"),
@@ -804,13 +952,17 @@ onmessage = (e) => {
   };
 
   // Restore per-viewer settings.
-  if (typeof saved.brightness === "number") el.brightness.value = saved.brightness;
+  const restored = migrateDither(saved);
+  if (typeof restored.brightness === "number") el.brightness.value = restored.brightness;
   // Older saves stored dithering as an on/off flag for Bayer.
-  if (typeof saved.dither === "boolean") el.mode.value = saved.dither ? "bayer" : "off";
-  if (DITHER_MODES.includes(saved.mode)) el.mode.value = saved.mode;
-  if (typeof saved.mix === "number") el.mix.value = saved.mix;
-  if (saved.bayer) el.bayer.value = String(saved.bayer);
-  if (typeof saved.strength === "number") el.strength.value = saved.strength;
+  if (typeof restored.dither === "boolean") el.mode.value = restored.dither ? "bayer" : "off";
+  if (DITHER_MODES.includes(restored.mode)) el.mode.value = restored.mode;
+  if (typeof restored.mix === "number") el.mix.value = restored.mix;
+  if (DIFFUSE_MODES.includes(restored.diffuse)) el.diffuse.value = restored.diffuse;
+  if (typeof restored.dlimit === "number") el.dlimit.value = restored.dlimit;
+  if (typeof restored.dstrength === "number") el.dstrength.value = restored.dstrength;
+  if (restored.bayer) el.bayer.value = String(restored.bayer);
+  if (typeof restored.strength === "number") el.strength.value = restored.strength;
   if (typeof saved.alpha === "number") el.alpha.value = saved.alpha;
   if (typeof saved.grid === "boolean") el.grid.checked = saved.grid;
   if (typeof saved.showOrig === "boolean") el.showOrig.checked = saved.showOrig;
@@ -819,7 +971,8 @@ onmessage = (e) => {
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify({
         enabled: [...enabled], brightness: el.brightness.valueAsNumber || 0, mode: el.mode.value,
-        bayer: +el.bayer.value, strength: +el.strength.value, mix: +el.mix.value, alpha: el.alpha.valueAsNumber,
+        bayer: +el.bayer.value, strength: +el.strength.value, mix: +el.mix.value,
+        diffuse: el.diffuse.value, dlimit: +el.dlimit.value, dstrength: +el.dstrength.value, alpha: el.alpha.valueAsNumber,
         grid: el.grid.checked, showOrig: el.showOrig.checked,
       }));
     } catch {}
@@ -950,21 +1103,19 @@ onmessage = (e) => {
 
   // ---- Color controls ----
   function syncDitherUI() {
-    const diffuse = el.mode.value === "floyd" || el.mode.value === "atkinson";
-    // Strength applies to Bayer and to error diffusion; the matrix size only to Bayer.
-    el.ditherOpts.hidden = el.mode.value !== "bayer" && !diffuse;
-    $("bayerRow").hidden = el.mode.value !== "bayer";
-    $("diffuseHint").hidden = !diffuse;
-    // Diffusing more than 100% of the error compounds from pixel to pixel and blows up.
-    // Lowering a range input's max also pulls its value down to it.
-    el.strength.max = el.strengthNum.max = diffuse ? 100 : 200;
+    el.ditherOpts.hidden = el.mode.value !== "bayer";
     el.abOpts.hidden = el.mode.value !== "ab";
+    el.diffuseOpts.hidden = el.diffuse.value === "off";
     showNum(el.strengthNum, +el.strength.value);
     showNum(el.mixNum, +el.mix.value);
+    showNum(el.dlimitNum, +el.dlimit.value);
+    showNum(el.dstrengthNum, +el.dstrength.value);
   }
   syncDitherUI();
-  el.mode.addEventListener("change", () => { syncDitherUI(); changed(); });
-  [el.strength, el.mix].forEach((c) => c.addEventListener("input", () => { syncDitherUI(); changed(); }));
+  [el.mode, el.diffuse].forEach((c) => c.addEventListener("change", () => { syncDitherUI(); changed(); }));
+  [el.strength, el.mix, el.dlimit, el.dstrength].forEach((c) => c.addEventListener("input", () => { syncDitherUI(); changed(); }));
+  linkNum(el.dlimitNum, (v) => { el.dlimit.value = v; syncDitherUI(); changed(); }, syncDitherUI);
+  linkNum(el.dstrengthNum, (v) => { el.dstrength.value = v; syncDitherUI(); changed(); }, syncDitherUI);
   linkNum(el.strengthNum, (v) => { el.strength.value = v; syncDitherUI(); changed(); }, syncDitherUI);
   linkNum(el.mixNum, (v) => { el.mix.value = v; syncDitherUI(); changed(); }, syncDitherUI);
   [el.bayer, el.brightness, el.alpha].forEach((c) => c.addEventListener("input", changed));
@@ -1024,11 +1175,18 @@ onmessage = (e) => {
       // Mixing 0% charges enough for pair contrast that a pair essentially never wins;
       // 100% charges nothing, so any pair whose blend is closer than a single color is used.
       mixLimit: MIX_LIMIT_MAX * (1 - el.mix.value / 100),
+      diffuse: el.diffuse.value,
+      diffuseStrength: +el.dstrength.value / 100,
+      // A threshold of 100% diffuses only where the dithering misses by more than DIFFUSE_LIMIT_MAX.
+      diffuseLimit: DIFFUSE_LIMIT_MAX * el.dlimit.value / 100,
     }, [data.buffer]);
     el.origFrame.hidden = false;
     applyView();
   }
   const MIX_LIMIT_MAX = 0.4;
+  // Typical pixels sit 0.02-0.06 from their nearest palette color and deep, saturated
+  // shadows around 0.1, so this range spans "diffuse nearly everything" to "nearly nothing".
+  const DIFFUSE_LIMIT_MAX = 0.1;
 
   function setProgress(p) {
     el.progress.classList.toggle("idle", p === null);
@@ -1198,6 +1356,7 @@ onmessage = (e) => {
       width: w, height: h, lock: el.lock.checked,
       brightness: el.brightness.valueAsNumber || 0,
       mode: el.mode.value, bayer: +el.bayer.value, strength: +el.strength.value, mix: +el.mix.value,
+      diffuse: el.diffuse.value, dlimit: +el.dlimit.value, dstrength: +el.dstrength.value,
       alpha: Number.isFinite(cut) ? cut : 100,
       enabled: [...enabled].sort((a, b) => a - b),
     };
@@ -1281,14 +1440,16 @@ onmessage = (e) => {
   async function applyPayload(p) {
     if (!p || p.app !== PAYLOAD_APP || typeof p.image !== "string" || !p.image.startsWith("data:image/")) throw new Error("bad payload");
     const img = await createImageBitmap(await (await fetch(p.image)).blob());
-    const s = p.settings || {};
+    const s = migrateDither(p.settings || {});
     const num = (v, lo, hi, fallback) => Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : fallback;
     el.brightness.value = num(s.brightness, -100, 100, 0);
     el.mode.value = DITHER_MODES.includes(s.mode) ? s.mode : "off";
     el.bayer.value = [2, 4, 8].includes(s.bayer) ? String(s.bayer) : "4";
-    syncDitherUI(); // sets the strength limit for the imported mode before the value lands
     el.strength.value = num(s.strength, 0, 200, 100);
     el.mix.value = num(s.mix, 0, 100, 40);
+    el.diffuse.value = DIFFUSE_MODES.includes(s.diffuse) ? s.diffuse : "off";
+    el.dlimit.value = num(s.dlimit, 0, 100, 40);
+    el.dstrength.value = num(s.dstrength, 0, 100, 100);
     el.alpha.value = num(s.alpha, 0, 256, 100);
     if (Array.isArray(s.enabled)) {
       enabled.clear();
