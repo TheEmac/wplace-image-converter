@@ -74,6 +74,15 @@
   @media (max-width: 860px) { .layout { grid-template-columns: minmax(0, 1fr); } }
 
   .side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  /* On wide screens the settings column stays pinned and scrolls on its own,
+     so any setting can be reached while the preview stays in view. */
+  @media (min-width: 861px) {
+    .side {
+      position: sticky; top: 12px; align-self: start;
+      max-height: calc(100vh - 24px); overflow-y: auto; overscroll-behavior: contain;
+      padding-right: 4px; scrollbar-width: thin;
+    }
+  }
   .card {
     background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
     padding: 14px; box-shadow: var(--shadow); min-width: 0;
@@ -191,6 +200,33 @@
   }
   .toast.show { opacity: 1; }
   details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  .tabs, .seg {
+    display: inline-flex; gap: 2px; padding: 3px; align-self: flex-start;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 9px;
+  }
+  .tabs button, .seg button { border: none; background: transparent; padding: 5px 12px; border-radius: 6px; color: var(--muted); }
+  .seg button { padding: 3px 10px; }
+  .tabs button[aria-selected="true"], .seg button[aria-pressed="true"] {
+    background: var(--panel); color: var(--text); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  }
+  .pane { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .pane[hidden], .views[hidden], .check[hidden] { display: none; }
+  .mapbox {
+    position: relative; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--panel); aspect-ratio: 1; overflow: hidden;
+  }
+  .mapbox.tall { aspect-ratio: auto; height: min(70vh, 720px); min-height: 300px; cursor: grab; touch-action: none; user-select: none; }
+  .mapbox.tall.dragging { cursor: grabbing; }
+  .mapbox canvas { display: block; width: 100%; height: 100%; }
+  .usage .arrow { color: var(--muted); flex: none; }
+  .tip {
+    position: fixed; z-index: 10; pointer-events: none; max-width: 260px;
+    background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px 9px; font-size: 12px; line-height: 1.5; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  }
+  .tip[hidden] { display: none; }
+  .tip .chip { display: inline-block; width: 11px; height: 11px; border-radius: 3px; border: 1px solid rgba(0,0,0,.2); vertical-align: -1px; margin-right: 4px; }
+  .tip .muted { color: var(--muted); }
   .link-out {
     width: 100%; margin-top: 4px; background: var(--panel-2); color: var(--muted);
     border: 1px solid var(--border); border-radius: 7px; padding: 5px 7px; font: 12px ui-monospace, monospace;
@@ -327,6 +363,12 @@
   </aside>
 
   <main class="main">
+    <div class="tabs" role="tablist" aria-label="View">
+      <button role="tab" id="tabPreview" aria-selected="true" aria-controls="previewPane">Preview</button>
+      <button role="tab" id="tabAnalysis" aria-selected="false" aria-controls="analysisPane">Color analysis</button>
+    </div>
+
+    <div class="pane" id="previewPane" role="tabpanel" aria-labelledby="tabPreview">
     <section class="card">
       <div class="toolbar">
         <div class="zoom">
@@ -365,9 +407,50 @@
       <h2>Colors used <span class="stats" id="usageSummary"></span></h2>
       <div class="usage" id="usage"><span class="stats">Nothing yet.</span></div>
     </section>
+    </div>
+
+    <div class="pane" id="analysisPane" role="tabpanel" aria-labelledby="tabAnalysis" hidden>
+      <section class="card">
+        <div class="toolbar">
+          <div class="seg" role="group" aria-label="Map view">
+            <button id="map2d" aria-pressed="true">2D</button><button id="map3d" aria-pressed="false">3D</button>
+          </div>
+          <label class="check"><input type="checkbox" id="mapPalette" checked> Palette</label>
+          <label class="check"><input type="checkbox" id="mapImage" checked> Image colors</label>
+          <label class="check"><input type="checkbox" id="mapLines" checked> Match lines</label>
+          <label class="check"><input type="checkbox" id="mapUnused"> Hide unused palette colors</label>
+          <label class="check" id="mapInvertRow" hidden><input type="checkbox" id="mapInvert"> Invert left/right drag</label>
+        </div>
+        <p class="stats" id="mapStats" style="margin:8px 0 0"></p>
+        <p class="hint">Positions are in OKLab, the perceptual space the converter matches in. Each line joins an image color to the enabled palette color it's nearest to; faded squares are disabled colors. ΔE is the CIEDE2000 distance on OKLab, ×100.</p>
+      </section>
+
+      <section class="views" id="maps2d">
+        <div class="view">
+          <h3>Hue &amp; chroma (seen from above)</h3>
+          <div class="mapbox"><canvas id="mapAB"></canvas></div>
+        </div>
+        <div class="view">
+          <h3>Lightness vs chroma</h3>
+          <div class="mapbox"><canvas id="mapLC"></canvas></div>
+        </div>
+      </section>
+      <section class="views single" id="maps3d" hidden>
+        <div class="view">
+          <h3>OKLab in 3D · drag to orbit, Ctrl + scroll to zoom · chroma drawn ×2</h3>
+          <div class="mapbox tall" id="map3box"><canvas id="map3"></canvas></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Farthest from the palette <span class="stats">ΔE, weighted by pixel count</span></h2>
+        <div class="usage" id="worst"><span class="stats">Nothing yet.</span></div>
+      </section>
+    </div>
   </main>
 </div>
 <div class="toast" id="toast"></div>
+<div class="tip" id="mapTip" hidden></div>
 
 <!-- Color math and palette tables: OKLab conversion, the distance function and the wplace
      palette. Runs on the page and inside the worker. -->
@@ -949,6 +1032,12 @@ onmessage = (e) => {
     outFrame: $("outFrame"), outCanvas: $("outCanvas"), empty: $("empty"),
     outViewport: $("outViewport"), origViewport: $("origViewport"),
     usage: $("usage"), usageSummary: $("usageSummary"), toast: $("toast"),
+    tabPreview: $("tabPreview"), tabAnalysis: $("tabAnalysis"), previewPane: $("previewPane"), analysisPane: $("analysisPane"),
+    map2d: $("map2d"), map3d: $("map3d"), maps2d: $("maps2d"), maps3d: $("maps3d"),
+    mapPalette: $("mapPalette"), mapImage: $("mapImage"), mapLines: $("mapLines"), mapUnused: $("mapUnused"),
+    mapInvert: $("mapInvert"), mapInvertRow: $("mapInvertRow"),
+    mapStats: $("mapStats"), mapAB: $("mapAB"), mapLC: $("mapLC"), map3: $("map3"), map3box: $("map3box"),
+    worst: $("worst"), mapTip: $("mapTip"),
   };
 
   // Restore per-viewer settings.
@@ -966,6 +1055,15 @@ onmessage = (e) => {
   if (typeof saved.alpha === "number") el.alpha.value = saved.alpha;
   if (typeof saved.grid === "boolean") el.grid.checked = saved.grid;
   if (typeof saved.showOrig === "boolean") el.showOrig.checked = saved.showOrig;
+  // Color analysis view state.
+  let tab = saved.tab === "analysis" ? "analysis" : "preview";
+  let mapMode = saved.mapMode === "3d" ? "3d" : "2d";
+  const finite = (v, fallback) => Number.isFinite(v) ? v : fallback;
+  let imageStale = false, matchStale = true;
+  const cam = { yaw: finite(saved.yaw, 0.6), pitch: finite(saved.pitch, 0.35), zoom: finite(saved.mapZoom, 1) };
+  for (const k of ["mapPalette", "mapImage", "mapLines", "mapUnused", "mapInvert"]) {
+    if (typeof saved[k] === "boolean") el[k].checked = saved[k];
+  }
 
   function persist() {
     try {
@@ -974,6 +1072,9 @@ onmessage = (e) => {
         bayer: +el.bayer.value, strength: +el.strength.value, mix: +el.mix.value,
         diffuse: el.diffuse.value, dlimit: +el.dlimit.value, dstrength: +el.dstrength.value, alpha: el.alpha.valueAsNumber,
         grid: el.grid.checked, showOrig: el.showOrig.checked,
+        tab, mapMode, yaw: cam.yaw, pitch: cam.pitch, mapZoom: cam.zoom,
+        mapPalette: el.mapPalette.checked, mapImage: el.mapImage.checked,
+        mapLines: el.mapLines.checked, mapUnused: el.mapUnused.checked, mapInvert: el.mapInvert.checked,
       }));
     } catch {}
   }
@@ -1141,6 +1242,10 @@ onmessage = (e) => {
   let timer = 0;
   function changed() {
     persist();
+    // Palette selection and brightness move the match lines right away; size and alpha
+    // changes reach the map once run() has redrawn the resized source.
+    matchStale = true;
+    requestMapDraw();
     clearTimeout(timer);
     timer = setTimeout(run, 120);
   }
@@ -1155,6 +1260,8 @@ onmessage = (e) => {
     ctx.clearRect(0, 0, w, h);
     ctx.drawImage(source.img, 0, 0, w, h);
     const data = ctx.getImageData(0, 0, w, h).data;
+    imageStale = true;
+    requestMapDraw();
     // A newer request supersedes the running one. Restarting the worker is cheaper than
     // waiting for a stale result on a big image.
     if (busy && worker) { worker.terminate(); worker = null; }
@@ -1201,7 +1308,9 @@ onmessage = (e) => {
     el.empty.hidden = true;
     el.outFrame.hidden = false;
     el.copy.disabled = el.download.disabled = false;
-    if (zoomFitPending) { zoomFitPending = false; fitZoom(); } else applyView();
+    // A hidden preview has no size to fit to, so the fit waits until the tab is shown.
+    if (zoomFitPending && !el.previewPane.hidden) { zoomFitPending = false; fitZoom(); } else applyView();
+    requestMapDraw();
 
     let painted = 0, used = [];
     for (let i = 1; i < 64; i++) if (m.counts[i]) { painted += m.counts[i]; used.push(i); }
@@ -1245,7 +1354,7 @@ onmessage = (e) => {
   }
   function applyView() {
     showNum(el.zoomNum, zoom, zoom >= 10 ? 0 : zoom >= 1 ? 1 : 2);
-    if (!source) return;
+    if (!source || el.previewPane.hidden) return;
     const { w, h } = imageSize();
     clampPan();
     for (const [vp, frame, canvas] of views) {
@@ -1319,6 +1428,357 @@ onmessage = (e) => {
   }
   syncOrigView();
   el.showOrig.addEventListener("change", () => { syncOrigView(); persist(); });
+
+  // ---- Color analysis ----
+  // Plots the palette and the resized source's colors in OKLab. The work only happens while
+  // this tab is open: changed(), run() and showResult() just mark what's stale and ask for a draw.
+  const MAP_BINS = 2000;  // Most frequent color bins plotted. Photos have far more, mostly tiny.
+  const MAP_RANGE = 0.33; // OKLab chroma at the map edge, just past sRGB's most saturated blue.
+  const STRETCH = 2;      // The 3D view widens chroma, since the real solid is a thin column.
+  const WORST_ROWS = 12;
+  let imgColors = null;   // { list: [{ rgb, lab, n, best, d }], total, shown, bins }
+  let hits = [];          // Marks from the last draw in screen space, for hover.
+  let mapRaf = 0;
+
+  function requestMapDraw() {
+    if (tab !== "analysis" || mapRaf) return;
+    mapRaf = requestAnimationFrame(() => { mapRaf = 0; drawAnalysis(); });
+  }
+
+  function readImageColors() {
+    const { width: w, height: h } = el.origCanvas;
+    const px = el.origCanvas.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+    const cut = finite(el.alpha.valueAsNumber, 100);
+    // 5 bits per channel: a bin reads as one color, and there are few enough to stay fast.
+    const n = new Uint32Array(32768), sum = new Float64Array(32768 * 3);
+    let total = 0;
+    for (let p = 0; p < px.length; p += 4) {
+      if (px[p + 3] < cut) continue;
+      const k = (px[p] >> 3) << 10 | (px[p + 1] >> 3) << 5 | px[p + 2] >> 3;
+      n[k]++; sum[k * 3] += px[p]; sum[k * 3 + 1] += px[p + 1]; sum[k * 3 + 2] += px[p + 2];
+      total++;
+    }
+    const keys = [];
+    for (let k = 0; k < 32768; k++) if (n[k]) keys.push(k);
+    keys.sort((a, b) => n[b] - n[a]);
+    let shown = 0;
+    const list = keys.slice(0, MAP_BINS).map((k) => {
+      const rgb = [0, 1, 2].map((o) => Math.round(sum[k * 3 + o] / n[k]));
+      shown += n[k];
+      return { rgb, lab: rgbToOklab(rgb[0], rgb[1], rgb[2]), n: n[k], best: 0, d: 0 };
+    });
+    return { list, total, shown, bins: keys.length };
+  }
+
+  // Nearest enabled color the same way the converter picks a solid color, brightness included.
+  // The distance shown is the plain one, so brightness doesn't skew the numbers.
+  function matchImageColors() {
+    const bright = el.brightness.valueAsNumber || 0;
+    const on = [...enabled];
+    for (const c of imgColors.list) {
+      let best = 0, min = Infinity;
+      for (const i of on) {
+        const delta = deltaE2000(c.lab, COLORS[i], bright);
+        if (delta < min) { min = delta; best = i; }
+      }
+      c.best = best;
+      c.d = best ? deltaE2000(c.lab, COLORS[best], 0) : 0;
+    }
+  }
+
+  const fmtD = (d) => (d * 100).toFixed(1);
+  const note = (text) => Object.assign(document.createElement("span"), { className: "stats", textContent: text });
+  function summarize() {
+    const list = imgColors?.list || [];
+    if (!imgColors || !list.length || !enabled.size) {
+      el.mapStats.textContent = !source ? "Upload an image to compare its colors with the palette."
+        : !imgColors ? "Reading colors…" : !list.length ? "No opaque pixels." : "No palette colors are enabled.";
+      el.worst.replaceChildren(note("Nothing yet."));
+      return;
+    }
+    const { shown, total, bins } = imgColors;
+    let sum = 0, worst = list[0];
+    for (const c of list) { sum += c.d * c.n; if (c.d > worst.d) worst = c; }
+    el.mapStats.textContent = `${bins.toLocaleString()} color groups` +
+      (bins > list.length ? ` (top ${list.length.toLocaleString()} plotted, ${(shown / total * 100).toFixed(1)}% of pixels)` : "") +
+      ` · average ΔE ${fmtD(sum / shown)} · worst ΔE ${fmtD(worst.d)}`;
+    const rows = [...list].sort((p, q) => q.d * q.n - p.d * p.n).slice(0, WORST_ROWS);
+    el.worst.replaceChildren(...rows.map((c) => {
+      const d = document.createElement("div");
+      d.className = "item";
+      d.title = `rgb(${c.rgb}) · ${c.n.toLocaleString()} pixels`;
+      d.innerHTML = `<span class="chip" style="background:rgb(${c.rgb})"></span><span class="arrow">→</span>` +
+        `<span class="chip" style="background:rgb(${COLORS_RGB[c.best]})"></span>` +
+        `<span class="name">${COLOR_NAMES[c.best]}</span><span class="n">${fmtD(c.d)}</span>`;
+      return d;
+    }));
+  }
+
+  function prepCanvas(c) {
+    const w = c.clientWidth, h = c.clientHeight, dpr = window.devicePixelRatio || 1;
+    const W = Math.max(1, Math.round(w * dpr)), H = Math.max(1, Math.round(h * dpr));
+    if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
+    const ctx = c.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    return { ctx, w, h };
+  }
+  function mapTokens() {
+    const s = getComputedStyle(document.documentElement);
+    const t = (n) => s.getPropertyValue(n).trim();
+    return { text: t("--text"), muted: t("--muted"), border: t("--border") };
+  }
+  function line(ctx, pts) {
+    ctx.beginPath();
+    pts.forEach(([x, y], k) => k ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+    ctx.stroke();
+  }
+  function label(ctx, t, text, x, y, align = "center", base = "middle") {
+    ctx.fillStyle = t.muted; ctx.font = "11px system-ui, sans-serif";
+    ctx.textAlign = align; ctx.textBaseline = base;
+    ctx.fillText(text, x, y);
+  }
+
+  // Top-down view of the a/b plane: hue runs around the center, chroma grows outward.
+  function abProject(lab, w, h) {
+    const half = Math.min(w, h) / 2 - 16;
+    return { x: w / 2 + lab[1] / MAP_RANGE * half, y: h / 2 - lab[2] / MAP_RANGE * half };
+  }
+  function abBackdrop(ctx, w, h, t) {
+    const half = Math.min(w, h) / 2 - 16, cx = w / 2, cy = h / 2;
+    ctx.strokeStyle = t.border; ctx.lineWidth = 1;
+    for (const c of [0.1, 0.2, 0.3]) { ctx.beginPath(); ctx.arc(cx, cy, c / MAP_RANGE * half, 0, Math.PI * 2); ctx.stroke(); }
+    line(ctx, [[cx - half, cy], [cx + half, cy]]);
+    line(ctx, [[cx, cy - half], [cx, cy + half]]);
+    label(ctx, t, "red", cx + half, cy - 8, "right");
+    label(ctx, t, "green", cx - half, cy - 8, "left");
+    label(ctx, t, "yellow", cx + 6, cy - half + 6, "left");
+    label(ctx, t, "blue", cx + 6, cy + half - 6, "left");
+  }
+
+  // Lightness up, chroma (distance from gray) across. Hue is folded away.
+  function lcProject(lab, w, h) {
+    const left = 30, pad = 14;
+    return { x: left + Math.hypot(lab[1], lab[2]) / MAP_RANGE * (w - left - pad), y: h - pad - 12 - lab[0] * (h - 2 * pad - 12) };
+  }
+  function lcBackdrop(ctx, w, h, t) {
+    ctx.strokeStyle = t.border; ctx.lineWidth = 1;
+    for (const L of [0, 0.25, 0.5, 0.75, 1]) {
+      const { y } = lcProject([L, 0, 0], w, h);
+      line(ctx, [[30, y], [w - 14, y]]);
+      label(ctx, t, String(L * 100), 24, y, "right");
+    }
+    for (const c of [0, 0.1, 0.2, 0.3]) {
+      const { x } = lcProject([0, c, 0], w, h);
+      line(ctx, [[x, lcProject([0, 0, 0], w, h).y], [x, lcProject([1, 0, 0], w, h).y]]);
+      label(ctx, t, c ? String(c) : "gray", x, h - 10, c ? "center" : "left");
+    }
+  }
+
+  // Perspective view of OKLab with L up. Yaw turns around the L axis, pitch tilts toward the viewer.
+  function project3(lab, w, h) {
+    const X = lab[1] * STRETCH, Y = lab[0] - 0.5, Z = lab[2] * STRETCH;
+    const cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw), cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
+    const x1 = X * cy - Z * sy, z1 = X * sy + Z * cy;
+    const y2 = Y * cp + z1 * sp, z2 = z1 * cp - Y * sp;
+    const s = 3 / (3 + z2);
+    const scale = Math.min(w, h) * 0.62 * cam.zoom;
+    return { x: w / 2 + x1 * s * scale, y: h / 2 - y2 * s * scale, z: z2, s };
+  }
+  function backdrop3(ctx, w, h, t) {
+    const at = (L, a, b) => { const p = project3([L, a, b], w, h); return [p.x, p.y]; };
+    ctx.strokeStyle = t.border; ctx.lineWidth = 1;
+    for (const c of [0.1, 0.2, 0.3]) {
+      const ring = [];
+      for (let k = 0; k <= 48; k++) ring.push(at(0.5, c * Math.cos(k / 24 * Math.PI), c * Math.sin(k / 24 * Math.PI)));
+      line(ctx, ring);
+    }
+    line(ctx, [at(0, 0, 0), at(1, 0, 0)]);
+    line(ctx, [at(0.5, -MAP_RANGE, 0), at(0.5, MAP_RANGE, 0)]);
+    line(ctx, [at(0.5, 0, -MAP_RANGE), at(0.5, 0, MAP_RANGE)]);
+    const tag = (text, p) => label(ctx, t, text, p[0], p[1]);
+    tag("black", at(-0.05, 0, 0)); tag("white", at(1.05, 0, 0));
+    tag("red", at(0.5, MAP_RANGE + 0.04, 0)); tag("green", at(0.5, -MAP_RANGE - 0.04, 0));
+    tag("yellow", at(0.5, 0, MAP_RANGE + 0.04)); tag("blue", at(0.5, 0, -MAP_RANGE - 0.04));
+  }
+
+  function drawMap(canvas, project, t, backdrop, depthSort) {
+    const { ctx, w, h } = prepCanvas(canvas);
+    backdrop(ctx, w, h, t);
+    if (imgColors && el.mapLines.checked) {
+      ctx.strokeStyle = t.muted; ctx.globalAlpha = 0.35; ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (const c of imgColors.list) {
+        if (!c.best) continue;
+        const a = project(c.lab, w, h), b = project(COLORS[c.best], w, h);
+        ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    const marks = [];
+    if (imgColors && el.mapImage.checked) imgColors.list.forEach((c, k) => marks.push({ kind: "img", k, ...project(c.lab, w, h) }));
+    if (el.mapPalette.checked) {
+      const hideUnused = el.mapUnused.checked && result;
+      for (const i of FREE.concat(PAID)) if (!hideUnused || result.counts[i]) marks.push({ kind: "pal", i, ...project(COLORS[i], w, h) });
+    }
+    if (depthSort) marks.sort((p, q) => q.z - p.z);
+    ctx.strokeStyle = t.text; ctx.lineWidth = 1;
+    for (const m of marks) {
+      const s = m.s || 1;
+      if (m.kind === "img") {
+        const c = imgColors.list[m.k];
+        // Area tracks pixel share, clamped so a few dominant colors don't cover the map.
+        m.r = Math.min(9, 1.5 + Math.sqrt(c.n / imgColors.shown) * 40) * s;
+        ctx.fillStyle = `rgb(${c.rgb})`;
+        ctx.beginPath(); ctx.arc(m.x, m.y, m.r, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 0.3; ctx.stroke(); ctx.globalAlpha = 1;
+      } else {
+        m.r = 5.5 * s;
+        ctx.globalAlpha = enabled.has(m.i) ? 1 : 0.25;
+        ctx.fillStyle = `rgb(${COLORS_RGB[m.i]})`;
+        ctx.fillRect(m.x - m.r, m.y - m.r, m.r * 2, m.r * 2);
+        ctx.strokeRect(m.x - m.r + 0.5, m.y - m.r + 0.5, m.r * 2 - 1, m.r * 2 - 1);
+        ctx.globalAlpha = 1;
+      }
+      m.canvas = canvas;
+      hits.push(m);
+    }
+  }
+
+  function drawAnalysis() {
+    if (tab !== "analysis") return;
+    if (imageStale && source) { imgColors = readImageColors(); imageStale = false; matchStale = true; }
+    if (matchStale) { if (imgColors) matchImageColors(); matchStale = false; summarize(); }
+    el.mapUnused.disabled = !result;
+    el.mapImage.disabled = el.mapLines.disabled = !imgColors;
+    el.maps2d.hidden = mapMode !== "2d";
+    el.maps3d.hidden = mapMode !== "3d";
+    hits = [];
+    const t = mapTokens();
+    if (mapMode === "2d") {
+      drawMap(el.mapAB, abProject, t, abBackdrop, false);
+      drawMap(el.mapLC, lcProject, t, lcBackdrop, false);
+    } else {
+      drawMap(el.map3, project3, t, backdrop3, true);
+    }
+  }
+
+  // ---- Map hover ----
+  function hitAt(canvas, x, y) {
+    let best = null, bd = Infinity;
+    for (const m of hits) {
+      if (m.canvas !== canvas) continue;
+      const d = Math.hypot(m.x - x, m.y - y);
+      // Palette squares win ties, since they sit on top of the image dots.
+      const score = d - (m.kind === "pal" ? 2 : 0);
+      if (d <= m.r + 3 && score <= bd) { best = m; bd = score; }
+    }
+    return best;
+  }
+  const chip = (rgb) => `<span class="chip" style="background:rgb(${rgb})"></span>`;
+  function tipHtml(m) {
+    if (m.kind === "pal") {
+      const i = m.i;
+      let html = `${chip(COLORS_RGB[i])}<b>${COLOR_NAMES[i]}</b>${i > 31 ? " 💧" : ""}<br>` +
+        `<span class="muted">rgb(${COLORS_RGB[i]}) · ${i > 31 ? "paid" : "free"}${enabled.has(i) ? "" : " · disabled"}</span>`;
+      if (imgColors) {
+        let n = 0;
+        for (const c of imgColors.list) if (c.best === i) n += c.n;
+        html += `<br>Nearest match for ${n.toLocaleString()} image pixels`;
+      }
+      if (result) html += `<br>${result.counts[i].toLocaleString()} pixels in the converted image`;
+      return html;
+    }
+    const c = imgColors.list[m.k];
+    return `${chip(c.rgb)}<b>rgb(${c.rgb})</b><br>` +
+      `<span class="muted">${c.n.toLocaleString()} pixels (${(c.n / imgColors.total * 100).toFixed(2)}%)</span>` +
+      (c.best ? `<br>Nearest: ${chip(COLORS_RGB[c.best])}${COLOR_NAMES[c.best]} · ΔE ${fmtD(c.d)}` : "");
+  }
+  function hover(canvas, e) {
+    const r = canvas.getBoundingClientRect();
+    const m = hitAt(canvas, e.clientX - r.left, e.clientY - r.top);
+    const tip = el.mapTip;
+    if (!m) { tip.hidden = true; return; }
+    tip.innerHTML = tipHtml(m);
+    tip.hidden = false;
+    tip.style.left = Math.max(8, Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8)) + "px";
+    tip.style.top = (e.clientY + 14 + tip.offsetHeight > innerHeight ? e.clientY - 14 - tip.offsetHeight : e.clientY + 14) + "px";
+  }
+  for (const c of [el.mapAB, el.mapLC]) {
+    c.addEventListener("pointermove", (e) => hover(c, e));
+    c.addEventListener("pointerleave", () => { el.mapTip.hidden = true; });
+  }
+
+  // ---- 3D orbit ----
+  let orbit = null;
+  el.map3box.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    orbit = { id: e.pointerId, x: e.clientX, y: e.clientY, yaw: cam.yaw, pitch: cam.pitch };
+    el.map3box.setPointerCapture(e.pointerId);
+    el.map3box.classList.add("dragging");
+    el.mapTip.hidden = true;
+  });
+  el.map3box.addEventListener("pointermove", (e) => {
+    if (!orbit || e.pointerId !== orbit.id) { hover(el.map3, e); return; }
+    cam.yaw = orbit.yaw - (e.clientX - orbit.x) * 0.01 * (el.mapInvert.checked ? -1 : 1);
+    cam.pitch = Math.max(-1.5, Math.min(1.5, orbit.pitch + (e.clientY - orbit.y) * 0.01));
+    requestMapDraw();
+  });
+  const endOrbit = (e) => {
+    if (!orbit || e.pointerId !== orbit.id) return;
+    orbit = null;
+    el.map3box.classList.remove("dragging");
+    persist();
+  };
+  el.map3box.addEventListener("pointerup", endOrbit);
+  el.map3box.addEventListener("pointercancel", endOrbit);
+  el.map3box.addEventListener("pointerleave", () => { if (!orbit) el.mapTip.hidden = true; });
+  el.map3box.addEventListener("wheel", (e) => {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    cam.zoom = Math.max(0.5, Math.min(4, cam.zoom * Math.exp(-Math.max(-100, Math.min(100, e.deltaY)) * 0.0015)));
+    requestMapDraw();
+    persist();
+  }, { passive: false });
+
+  // ---- Tabs and map controls ----
+  function setTab(next) {
+    tab = next;
+    el.tabPreview.setAttribute("aria-selected", String(tab === "preview"));
+    el.tabAnalysis.setAttribute("aria-selected", String(tab === "analysis"));
+    el.tabPreview.tabIndex = tab === "preview" ? 0 : -1;
+    el.tabAnalysis.tabIndex = tab === "analysis" ? 0 : -1;
+    el.previewPane.hidden = tab !== "preview";
+    el.analysisPane.hidden = tab !== "analysis";
+    el.mapTip.hidden = true;
+    if (tab === "analysis") requestMapDraw();
+    else if (zoomFitPending && result) { zoomFitPending = false; fitZoom(); }
+    else applyView();
+  }
+  el.tabPreview.addEventListener("click", () => { setTab("preview"); persist(); });
+  el.tabAnalysis.addEventListener("click", () => { setTab("analysis"); persist(); });
+  for (const b of [el.tabPreview, el.tabAnalysis]) b.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    const other = b === el.tabPreview ? el.tabAnalysis : el.tabPreview;
+    other.click(); other.focus();
+  });
+  function setMapMode(m) {
+    mapMode = m;
+    el.map2d.setAttribute("aria-pressed", String(m === "2d"));
+    el.map3d.setAttribute("aria-pressed", String(m === "3d"));
+    el.mapInvertRow.hidden = m !== "3d";
+    el.mapTip.hidden = true;
+    requestMapDraw();
+  }
+  el.map2d.addEventListener("click", () => { setMapMode("2d"); persist(); });
+  el.map3d.addEventListener("click", () => { setMapMode("3d"); persist(); });
+  el.mapInvert.addEventListener("change", persist);
+  [el.mapPalette, el.mapImage, el.mapLines, el.mapUnused].forEach((c) => c.addEventListener("change", () => { requestMapDraw(); persist(); }));
+  new ResizeObserver(requestMapDraw).observe(el.analysisPane);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", requestMapDraw);
+  setMapMode(mapMode);
+  setTab(tab);
 
   // ---- Output ----
   const outBlob = () => new Promise((res) => el.outCanvas.toBlob(res, "image/png"));
